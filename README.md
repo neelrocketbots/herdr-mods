@@ -7,7 +7,7 @@ one git worktree per Linear issue: GitHub, PR, CI and Linear links for the
 focused terminal, a worktree dialog, a PR inbox, markdown previews, and "open in
 your editor" everywhere.
 
-![The custom-herdr layout: quick links in the top bar, the PR inbox open on the right](docs/overview.png)
+![The custom-herdr layout: quick links in the top bar, the PR inbox open on the right](custom-herdr/screenshot.png)
 
 These are **desktop app mods** (`~/.config/herdr-app`), not herdr TUI plugins.
 All images are mockups with made-up data.
@@ -15,7 +15,8 @@ All images are mockups with made-up data.
 ## Units
 
 Each folder is one installable unit in Herdr's sharing format (`mods/<name>/`,
-`RECIPE.md`, `preview.png`, sometimes `keys.json` or `layouts/`). Take one or all.
+`RECIPE.md`, `preview.png`, sometimes `keys.json` or `layouts/`), with a README
+and a screenshot. Take one or all.
 
 | Unit | What it is |
 | --- | --- |
@@ -27,8 +28,8 @@ Each folder is one installable unit in Herdr's sharing format (`mods/<name>/`,
 | [`custom-herdr`](custom-herdr) | Layout: Herdr's main layout with all of the above wired in (bundles its own copies of the mods) |
 
 <p>
-  <img src="docs/worktree.png" alt="The worktree dialog: a name field, then the existing worktrees with their PRs, CI, rename and remove" width="49%">
-  <img src="docs/files.png" alt="The Files panel showing a rendered markdown file with Source and Open in Zed buttons" width="42%">
+  <img src="issue-worktree/screenshot.png" alt="The worktree dialog: a name field, then the existing worktrees with their PRs, CI, rename and remove" width="49%">
+  <img src="files-md/screenshot.png" alt="The Files panel showing a rendered markdown file with Source and Open in Zed buttons" width="42%">
 </p>
 
 ## Install
@@ -113,7 +114,8 @@ sh scripts/check.sh   # what CI runs: scripts parse, JSON valid, copies identica
 
 `editor.js` (4 copies) and `ci.js` (2 copies) must stay identical: mods can't
 import from each other's folders. Regenerate the images with
-`sh docs/mockups/render.sh` (headless Chrome).
+`sh docs/mockups/render.sh` (headless Chrome): each unit's `screenshot.png` and
+`preview.png`.
 
 ## License
 

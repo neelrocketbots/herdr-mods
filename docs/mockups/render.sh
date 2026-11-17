@@ -1,6 +1,6 @@
 #!/bin/sh
-# Renders the README images and each unit's marketplace preview.png from these
-# mockups (made-up data) with headless Chrome at 2x.
+# Renders each unit's screenshot.png (README) and preview.png (marketplace card)
+# from these mockups (made-up data) with headless Chrome at 2x.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -11,9 +11,14 @@ shot() { # shot <url> <out> <width> <height>
 		--default-background-color=00000000 --window-size="$3,$4" --screenshot="$2" "$1" >/dev/null 2>&1
 	echo "${2#"$repo"/}"
 }
-shot "file://$here/overview.html" "$repo/docs/overview.png" 1400 820
-shot "file://$here/worktree.html" "$repo/docs/worktree.png" 568 620
-shot "file://$here/files.html" "$repo/docs/files.png" 488 524
+# Each unit's screenshot.png: the UI on its own (READMEs).
+shot "file://$here/topbar.html" "$repo/quick-links/screenshot.png" 920 160
+shot "file://$here/worktree.html" "$repo/issue-worktree/screenshot.png" 568 600
+shot "file://$here/prinbox.html" "$repo/pr-inbox/screenshot.png" 440 510
+shot "file://$here/files.html" "$repo/files-md/screenshot.png" 488 524
+shot "file://$here/changes.html" "$repo/changes-editor/screenshot.png" 460 510
+shot "file://$here/overview.html" "$repo/custom-herdr/screenshot.png" 1400 820
+# Each unit's preview.png: the marketplace card.
 for unit in quick-links issue-worktree pr-inbox files-md changes-editor custom-herdr; do
 	shot "file://$here/card.html?unit=$unit" "$repo/$unit/preview.png" 1600 800
 done
