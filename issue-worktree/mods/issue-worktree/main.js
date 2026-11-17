@@ -1,0 +1,417 @@
+// New worktree: a dialog that makes one git worktree (usually one per Linear
+// issue, e.g. WEB-140, but any name works) and opens it as a space with a
+// terminal.
+//
+//   <repo>/.worktrees/<name>   on branch <name>
+//   branched from a fresh origin/master
+//
+// Below the form it lists the repo's existing worktrees (newest commit first,
+// filtered by what's typed in the name field). Clicking one goes to its space,
+// or opens a new space there with a terminal. Creating an issue whose folder
+// already exists does the same. Each row also shows its PR (state + CI dot,
+// click opens it), an open-in-editor button, and Remove (worktree + local branch + its
+// space, after a confirm that warns about uncommitted changes), and Rename
+// (the branch; optionally the folder too). props.remove = a worktree path
+// opens straight on that row's Remove (the top bar's "merged · clean up").
+//
+// Opened by the quick-links "Worktree" button with props { cwd } (any folder
+// inside the repo or one of its worktrees), or by `mod.open:issue-worktree`
+// (keys.json) for the focused terminal's folder.
+
+import { View, div, svg } from "gpui-kit";
+import { v_flex, h_flex, InputState, Input, Scrollbar } from "gpui-base";
+import { exec, run, props, closeOverlay, theme, checking, focused, spaces, panes, home, notify, shared } from "herdr";
+import { ciSummary, CI_COLOR, CI_WORD } from "./ci.js";
+import { openInEditor, editorName } from "./editor.js";
+
+const BASE = { remote: "origin", branch: "master" };
+const LIST_MAX = 320; // px of worktree list before it scrolls
+// Safe as both a folder and a branch name.
+const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+const git = (args, cwd, timeout = 60_000) => exec("git", args, { cwd, timeout });
+
+// PRs per branch, by repo root, kept in module scope on purpose: each dialog
+// open is a new copy of this mod, and module state is shared by copies (until
+// the mod's code changes), so reopening shows the last known PRs at once and
+// only asks GitHub again after PR_TTL.
+const PR_CACHE = new Map(); // root -> { at, prs: { [branch]: pr | null } }
+const PR_TTL = 60_000;
+
+// One GraphQL request for every branch's latest PR (open, merged or closed)
+// with its checks, instead of one `gh pr list` per worktree.
+const PR_FIELDS = `nodes { number state isDraft url title
+  commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+    __typename
+    ... on CheckRun { name status conclusion detailsUrl startedAt completedAt }
+    ... on StatusContext { context state targetUrl createdAt } } } } } } } }`;
+async function prsFor(root, branches) {
+  const remote = await git(["remote", "get-url", "origin"], root, 5000);
+  const m = remote.stdout.trim().match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
+  if (!m || !branches.length) return {};
+  const fields = branches.map((b, i) => `b${i}: pullRequests(headRefName: ${JSON.stringify(b)}, first: 1, ` +
+    `states: [OPEN, MERGED, CLOSED], orderBy: {field: UPDATED_AT, direction: DESC}) { ${PR_FIELDS} }`).join("\n");
+  const query = `query { repository(owner: ${JSON.stringify(m[1])}, name: ${JSON.stringify(m[2])}) { ${fields} } }`;
+  const r = await exec("gh", ["api", "graphql", "-f", `query=${query}`], { cwd: root, timeout: 30_000 });
+  if (r.code !== 0) throw new Error(r.stderr.trim().split("\n").pop() || "gh api failed");
+  const repo = JSON.parse(r.stdout).data?.repository ?? {};
+  const out = {};
+  branches.forEach((b, i) => {
+    const n = repo[`b${i}`]?.nodes?.[0];
+    out[b] = n ? { number: n.number, state: n.state, isDraft: n.isDraft, url: n.url, title: n.title,
+      statusCheckRollup: n.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? [] } : null;
+  });
+  return out;
+}
+
+// The repo a folder belongs to: its git dir and main checkout, even from inside
+// another worktree.
+async function repoOf(cwd) {
+  const common = await git(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd);
+  if (common.code !== 0) throw new Error("Not inside a git repository");
+  const gitDir = common.stdout.trim();
+  const root = gitDir.endsWith("/.git") ? gitDir.slice(0, -5) : (await git(["rev-parse", "--show-toplevel"], cwd)).stdout.trim();
+  return { gitDir, root };
+}
+
+// The repo's worktrees (not the main checkout), most recently committed first:
+// { path, branch, at }.
+async function worktrees(root) {
+  const list = await git(["worktree", "list", "--porcelain"], root);
+  if (list.code !== 0) return [];
+  const refs = await git(["for-each-ref", "--format=%(refname:short)%09%(committerdate:unix)", "refs/heads"], root);
+  const when = new Map(refs.stdout.trim().split("\n").map((l) => l.split("\t")).map(([b, at]) => [b, Number(at) || 0]));
+  const out = [];
+  for (const [i, block] of list.stdout.trim().split(/\n\n+/).entries()) {
+    const lines = block.split("\n");
+    const path = lines.find((l) => l.startsWith("worktree "))?.slice(9);
+    if (i === 0 || !path || lines.some((l) => l === "bare" || l.startsWith("prunable"))) continue;
+    const branch = lines.find((l) => l.startsWith("branch "))?.slice(7).replace(/^refs\/heads\//, "") ?? null;
+    out.push({ path, branch, at: branch ? (when.get(branch) ?? 0) : 0 });
+  }
+  return out.sort((a, b) => b.at - a.at);
+}
+
+// The local space showing a folder: one of its terminals is inside it (the
+// deepest worktree wins, so the main checkout's space doesn't claim them).
+function spaceOf(path, all) {
+  const inside = (p, dir) => p === dir || p.startsWith(dir + "/");
+  const paneList = panes();
+  return spaces().find((s) => {
+    if (s.machine) return false;
+    const tabs = new Set((s.tabs ?? []).map((c) => c.id));
+    const at = paneList.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
+    if (!at || !inside(at, path)) return false;
+    return !all.some((c) => c.path !== path && c.path.length > path.length && inside(at, c.path));
+  });
+}
+
+const ago = (s) => {
+  const d = Date.now() / 1000 - s;
+  return d < 3600 ? `${Math.max(1, Math.round(d / 60))}m` : d < 86400 ? `${Math.round(d / 3600)}h` : d < 86400 * 60 ? `${Math.round(d / 86400)}d` : `${Math.round(d / 86400 / 30)}mo`;
+};
+
+export default class IssueWorktree extends View {
+  init(_props, cx) {
+    this.issue = "";
+    this.busy = null;   // what it's doing now, or null
+    this.error = null;
+    this.repo = null;   // { gitDir, root } once found
+    this.list = undefined;
+    this.home = checking() ? "" : home();
+    this.issueInput = InputState.new({ placeholder: "WEB-140 (also filters the list below)" });
+    this.issueInput.on("change", (_e, cx) => { this.issue = this.issueInput.value(); this.error = null; cx.notify(); });
+    this.issueInput.on("submit", (_e, cx) => this.create(cx));
+    this.handle = cx.focus_handle();
+    this.editor = "editor";
+    if (checking()) return;
+    cx.spawn(async (cx) => { this.editor = await editorName(); cx.notify(); });
+    this.issueInput.focus();
+    cx.timer.after(600, () => this.issueInput.focus());
+
+    const cwd = props()?.cwd ?? focused()?.cwd;
+    if (!cwd) { this.repoError = "No folder: focus a terminal inside a repo first"; this.list = []; return; }
+    this.confirm = null; // { path, dirty } while a Remove waits for confirmation
+    this.renaming = null; // { path, branch, move, pushed } while a row is being renamed
+    this.renameText = "";
+    this.renameInput = InputState.new({ placeholder: "new name, e.g. hotfix/WEB-140-export-timeout" });
+    this.renameInput.on("change", (_e, cx) => { this.renameText = this.renameInput.value(); this.error = null; cx.notify(); });
+    this.renameInput.on("submit", (_e, cx) => this.rename(cx));
+    cx.spawn(async (cx) => {
+      try {
+        this.repo = await repoOf(cwd);
+      } catch (e) {
+        this.repoError = String(e?.message ?? e);
+        this.list = [];
+        cx.notify();
+        return;
+      }
+      await this.reload(cx);
+      // Opened from the top bar's "merged · clean up": go straight to its Remove.
+      const target = props()?.remove && this.list.find((c) => c.path === props().remove);
+      if (target) this.askRemove(target, cx);
+    });
+  }
+
+  // Read the worktrees and show them with the PRs known so far, then (when
+  // those are older than PR_TTL, or a branch is new) ask GitHub once for all.
+  // force: after a rename or remove, when branches changed.
+  async reload(cx, force = false) {
+    const root = this.repo.root;
+    const list = await worktrees(root);
+    const cached = PR_CACHE.get(root);
+    for (const c of list) c.pr = c.branch ? cached?.prs[c.branch] : undefined;
+    this.list = list;
+    cx.notify();
+    const branches = list.map((c) => c.branch).filter(Boolean);
+    const stale = force || !cached || Date.now() - cached.at > PR_TTL || branches.some((b) => !(b in cached.prs));
+    if (!stale) return;
+    try {
+      const prs = await prsFor(root, branches);
+      PR_CACHE.set(root, { at: Date.now(), prs });
+      for (const c of this.list) if (c.branch) c.pr = prs[c.branch];
+    } catch {}
+    cx.notify();
+  }
+
+  startRename(c, cx) {
+    this.confirm = null;
+    this.renaming = { path: c.path, branch: c.branch, move: !c.branch, pushed: false };
+    this.renameText = c.branch ?? c.path.split("/").pop();
+    this.renameInput.set_value(this.renameText);
+    this.renameInput.focus();
+    cx.notify();
+    if (!c.branch) return;
+    cx.spawn(async (cx) => {
+      const up = await git(["rev-parse", "--abbrev-ref", `${c.branch}@{u}`], this.repo.root);
+      if (this.renaming?.path === c.path) { this.renaming.pushed = up.code === 0; cx.notify(); }
+    });
+  }
+
+  // Rename the branch; with `move`, also move the folder to .worktrees/<last
+  // part of the name> (closing and reopening its space, whose terminals end).
+  rename(cx) {
+    const r = this.renaming;
+    if (!r || this.busy) return;
+    const name = this.renameText.trim(), folder = name.split("/").pop();
+    const c = (this.list ?? []).find((x) => x.path === r.path);
+    if (!c) return;
+    const dir = `${this.repo.root}/.worktrees/${folder}`;
+    const branchChanges = Boolean(r.branch) && name !== r.branch, moves = r.move && dir !== r.path;
+    if (!branchChanges && !moves) { this.renaming = null; cx.notify(); return; }
+    this.busy = "Renaming…"; this.error = null; cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        if (branchChanges) {
+          const ok = await git(["check-ref-format", "--branch", name], this.repo.root);
+          if (ok.code !== 0) throw new Error(`"${name}" isn't a valid branch name`);
+          const mv = await git(["branch", "-m", r.branch, name], this.repo.root);
+          if (mv.code !== 0) throw new Error(mv.stderr.trim() || "git branch -m failed");
+        }
+        if (moves) {
+          if ((await exec("test", ["-e", dir])).code === 0) throw new Error(`.worktrees/${folder} already exists`);
+          const s = spaceOf(r.path, this.list ?? []);
+          if (s) run("space.close", { id: s.id, confirmed: true });
+          const wm = await git(["worktree", "move", r.path, dir], this.repo.root);
+          if (wm.code !== 0) throw new Error(wm.stderr.trim() || "git worktree move failed");
+          if (s) run("space.new", { folder: dir });
+        }
+        this.renaming = null;
+        this.busy = null;
+        await this.reload(cx, true);
+      } catch (e) {
+        this.busy = null;
+        this.error = String(e?.message ?? e);
+        cx.notify();
+        await this.reload(cx).catch(() => {});
+      }
+    });
+  }
+
+  askRemove(c, cx) {
+    this.renaming = null;
+    cx.spawn(async (cx) => {
+      const status = await git(["status", "--porcelain"], c.path);
+      this.confirm = { path: c.path, dirty: status.code !== 0 || status.stdout.trim() !== "" };
+      cx.notify();
+    });
+  }
+
+  // Close its space, remove the worktree, delete its local branch.
+  remove(c, cx) {
+    const dirty = this.confirm?.dirty;
+    this.confirm = null;
+    this.busy = `Removing ${c.branch ?? c.path}…`;
+    cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        const s = spaceOf(c.path, this.list ?? []);
+        if (s) run("space.close", { id: s.id, confirmed: true });
+        const rm = await git(["worktree", "remove", ...(dirty ? ["--force"] : []), c.path], this.repo.root);
+        if (rm.code !== 0) throw new Error(rm.stderr.trim() || "git worktree remove failed");
+        if (c.branch) {
+          const br = await git(["branch", "-D", c.branch], this.repo.root);
+          if (br.code !== 0) notify({ title: "Worktree removed, branch kept", body: br.stderr.trim(), level: "warning" });
+        }
+        this.busy = null;
+        await this.reload(cx, true);
+      } catch (e) {
+        this.busy = null;
+        this.error = String(e?.message ?? e);
+        cx.notify();
+      }
+    });
+  }
+
+  id() { return this.issue.trim(); }
+
+  shown() {
+    const f = this.issue.trim().toLowerCase();
+    return (this.list ?? []).filter((c) => !f || `${c.branch ?? ""} ${c.path}`.toLowerCase().includes(f));
+  }
+
+  openEditor(path) {
+    openInEditor(path);
+  }
+
+  // Go to the worktree's space, or open one there with a terminal.
+  open(path) {
+    const s = spaceOf(path, this.list ?? []);
+    closeOverlay(props()?.overlay);
+    if (s) run("space.select", { id: s.id });
+    else run("space.new", { folder: path });
+  }
+
+  create(cx) {
+    if (this.busy) return;
+    const id = this.id();
+    if (!NAME.test(id) || id.endsWith(".lock") || id.includes("..")) { this.error = "Use letters, numbers, dot, dash or underscore, e.g. WEB-140"; cx.notify(); return; }
+    if (!this.repo) { this.error = this.repoError ?? "Still finding the repo…"; cx.notify(); return; }
+    const { gitDir, root } = this.repo, branch = id, dir = `${root}/.worktrees/${id}`;
+    this.busy = "Checking…"; this.error = null; cx.notify();
+
+    cx.spawn(async (cx) => {
+      const step = (text) => { this.busy = text; cx.notify(); };
+      try {
+        if ((await exec("test", ["-d", dir])).code === 0) { this.open(dir); return; }
+
+        step(`Fetching ${BASE.remote}/${BASE.branch}…`);
+        const fetch = await git(["fetch", BASE.remote, BASE.branch], root, 120_000);
+        if (fetch.code !== 0) throw new Error(fetch.stderr.trim() || "git fetch failed");
+
+        // Keep .worktrees/ out of `git status` in repos that don't ignore it.
+        if ((await git(["check-ignore", "-q", `.worktrees/${id}`], root)).code !== 0) {
+          await exec("sh", ["-c", 'mkdir -p "$(dirname "$1")" && printf "\\n.worktrees/\\n" >> "$1"', "sh", `${gitDir}/info/exclude`]);
+        }
+
+        step(`Creating ${branch}…`);
+        const add = await git(["worktree", "add", "-b", branch, dir, `${BASE.remote}/${BASE.branch}`], root);
+        if (add.code !== 0) throw new Error(add.stderr.trim() || "git worktree add failed");
+
+        closeOverlay(props()?.overlay);
+        run("space.new", { folder: dir });
+      } catch (e) {
+        this.busy = null;
+        this.error = String(e?.message ?? e);
+        cx.notify();
+      }
+    });
+  }
+
+  renderList(t) {
+    const all = this.list, rows = this.shown();
+    const tilde = (p) => (this.home && p.startsWith(this.home) ? `~${p.slice(this.home.length)}` : p);
+    const PR_COLOR = { OPEN: "ansi2", MERGED: "ansi5", CLOSED: "ansi1" };
+    const action = (id, child, onClick, hover = t.foreground) => div().id(id).flex_none().px(5).py(1).rounded(5)
+      .text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.raised).text_color(hover))
+      .on_click((_e, cx) => { cx.stop_propagation(); onClick(cx); }).child(child);
+    const row = (c, i) => {
+      const there = spaceOf(c.path, all), pr = c.pr, confirming = this.confirm?.path === c.path;
+      const renaming = this.renaming?.path === c.path ? this.renaming : null;
+      const ci = pr?.state === "OPEN" ? ciSummary(pr.statusCheckRollup) : null;
+      const prWord = pr ? (pr.isDraft && pr.state === "OPEN" ? "draft" : pr.state.toLowerCase()) : null;
+      return v_flex().id(`iw-wt-${i}`).flex_none().min_h(44).py(5).px(10).justify_center().rounded(7).cursor_pointer()
+        .when(confirming || Boolean(renaming), (el) => el.bg(t.raised)).when(!confirming && !renaming, (el) => el.hover((s) => s.bg(t.hover)))
+        .on_click(() => this.open(c.path))
+        .child(h_flex().gap(6).items_center()
+          .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(c.branch ?? "detached"))
+          .when(Boolean(pr), (el) => el.child(h_flex().id(`iw-pr-${i}`).flex_none().gap(4).items_center().px(5).py(1).rounded(5)
+            .text_size(11).text_color(pr.isDraft ? t.dim : t[PR_COLOR[pr.state]] ?? t.muted).cursor_pointer().hover((s) => s.bg(t.raised))
+            .tooltip(`${pr.title}${ci ? ` · ${CI_WORD[ci.state]}` : ""}`)
+            .on_click((_e, cx) => { cx.stop_propagation(); exec("open", [ci?.state === "failing" && ci.url ? ci.url : pr.url]).catch(() => {}); })
+            .child(`#${pr.number} ${prWord}`)
+            .when(Boolean(ci), (el) => el.child(div().size(6).rounded(3).bg(t[CI_COLOR[ci.state]])))))
+          .when(Boolean(there), (el) => el.child(div().flex_none().text_size(11).text_color(t.accent).child("open")))
+          .when(!there && c.at > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(ago(c.at))))
+          .child(action(`iw-editor-${i}`, svg("mods/issue-worktree/editor.svg").size(13), () => this.openEditor(c.path)).tooltip(`Open in ${shared("herdr-mods.editor") ?? this.editor}`))
+          .child(action(`iw-rn-${i}`, "rename", (cx) => this.startRename(c, cx)))
+          .child(action(`iw-rm-${i}`, "remove", (cx) => this.askRemove(c, cx), t.ansi1)))
+        .child(div().truncate().text_size(11.5).text_color(t.dim).child(tilde(c.path)))
+        .when(confirming, (el) => el.child(h_flex().pt(6).gap(6).items_center()
+          .child(div().flex_1().min_w(0).text_size(11.5).text_color(this.confirm.dirty ? t.ansi1 : t.muted)
+            .child(this.confirm.dirty ? "Uncommitted changes will be lost. Remove anyway?" : `Remove the worktree${c.branch ? " and its local branch" : ""}${there ? ", and close its space" : ""}?`))
+          .child(action(`iw-rm-no-${i}`, "cancel", (cx) => { this.confirm = null; cx.notify(); }))
+          .child(div().id(`iw-rm-yes-${i}`).flex_none().px(8).py(2).rounded(5).text_size(11).bg(t.ansi1).text_color(t.background).cursor_pointer()
+            .on_click((_e, cx) => { cx.stop_propagation(); this.remove(c, cx); }).child("Remove"))))
+        .when(Boolean(renaming), (el) => {
+          const stop = (_e, cx) => cx.stop_propagation();
+          const folder = this.renameText.trim().split("/").pop() || "—";
+          const box = div().size(12).rounded(3).border_1().border_color(renaming.move ? t.accent : t.input).bg(renaming.move ? t.accent : t.background);
+          return el.child(v_flex().pt(6).gap(6).on_mouse_down("left", stop).on_click(stop)
+            .child(Input.new(this.renameInput).h(30).px(8).rounded(7).border_1().border_color(t.accent).bg(t.background).text_size(12).text_color(t.foreground))
+            .when(Boolean(c.branch), (el) => el.child(h_flex().id(`iw-rn-move-${i}`).gap(6).items_center().cursor_pointer().text_size(11.5).text_color(t.muted)
+              .on_click((_e, cx) => { cx.stop_propagation(); renaming.move = !renaming.move; cx.notify(); })
+              .child(box).child(`Also move the folder to .worktrees/${folder}${there ? " (closes and reopens its space)" : ""}`)))
+            .when(renaming.pushed, (el) => el.child(div().text_size(11.5).text_color(t.blocked)
+              .child("Pushed branch: the remote keeps the old name, and an open PR stays on it. Push the new name and open a new PR.")))
+            .child(h_flex().gap(6).justify_end()
+              .child(action(`iw-rn-no-${i}`, "cancel", (cx) => { this.renaming = null; cx.notify(); }))
+              .child(div().id(`iw-rn-yes-${i}`).flex_none().px(8).py(2).rounded(5).text_size(11).bg(t.solid).text_color(t.solid_foreground).cursor_pointer()
+                .on_click((_e, cx) => { cx.stop_propagation(); this.rename(cx); }).child("Rename"))));
+        });
+    };
+    const count = all === undefined ? "loading…" : rows.length === all.length ? `${all.length}` : `${rows.length}/${all.length}`;
+    return v_flex().pt(16)
+      .child(h_flex().pb(6).gap(6).items_center().border_t(1).border_color(t.border).pt(12)
+        .child(div().text_size(11.5).text_color(t.dim).child("Existing worktrees"))
+        .child(div().text_size(11).text_color(t.dim).child(count)))
+      // A content-sized dialog gives the list no height to scroll in, so it
+      // gets one: its rows' height, at most LIST_MAX (then it scrolls).
+      .child(div().relative().h(Math.min(LIST_MAX, Math.max(40, rows.reduce((h, c) =>
+          h + 56 + (this.renaming?.path === c.path ? 120 : 0) + (this.confirm?.path === c.path ? 36 : 0), 0))))
+        .child(v_flex().id("iw-list").size_full().overflow_y_scroll().gap(2)
+          .children(rows.map(row))
+          .when(all !== undefined && rows.length === 0, (el) => el.child(div().px(10).py(8).text_size(12).text_color(t.dim)
+            .child(this.repoError ?? (all.length ? "No worktree matches" : "No worktrees yet")))))
+        .child(Scrollbar.vertical("iw-list").absolute().inset_0()));
+  }
+
+  render() {
+    const t = theme();
+    const label = (text) => div().pt(14).pb(6).text_size(11.5).text_color(t.dim).child(text);
+    const button = (id, text, primary, action) => h_flex().id(id).h(32).px(14).items_center().rounded(8)
+      .border_1().border_color(primary ? t.solid : t.input).bg(primary ? t.solid : t.raised)
+      .text_color(primary ? t.solid_foreground : t.foreground).text_size(12.5).font_medium().cursor_pointer()
+      .when(Boolean(this.busy), (el) => el.opacity(0.6))
+      .hover((s) => s.opacity(0.88)).on_click(action).child(text);
+    const id = this.id(), valid = NAME.test(id);
+    const exists = valid && this.repo && (this.list ?? []).some((c) => c.path === `${this.repo.root}/.worktrees/${id}`);
+
+    return v_flex().id("issue-worktree").track_focus(this.handle).w_full().min_h(0).p(18).bg(t.popover).text_color(t.foreground)
+      .child(h_flex().items_center()
+        .child(div().flex_1().text_size(15).font_semibold().child("New worktree"))
+        .child(div().text_size(11).text_color(t.dim).child("Esc")))
+      .child(label("Worktree name"))
+      .child(Input.new(this.issueInput).h(36).px(10).rounded(9).border_1().border_color(t.accent)
+        .bg(t.background).text_size(12.8).text_color(t.foreground))
+      .child(v_flex().pt(14).gap(3).text_size(11.5).text_color(t.dim)
+        .child(div().truncate().child(exists ? `.worktrees/${id} already exists · Enter opens it` : `Branch  ${valid ? id : "—"}`))
+        .when(!exists, (el) => el.child(div().truncate().child(`Folder  .worktrees/${valid ? id : "—"}  ·  from ${BASE.remote}/${BASE.branch}  ·  opens a terminal`))))
+      .when(Boolean(this.error), (el) => el.child(div().pt(10).text_size(11.5).text_color(t.ansi1).child(this.error)))
+      .child(h_flex().pt(18).gap(8).items_center()
+        .child(div().flex_1().text_size(11.5).text_color(t.dim).child(this.busy ?? ""))
+        .child(button("iw-cancel", "Cancel", false, () => closeOverlay(props()?.overlay)))
+        .child(button("iw-create", this.busy ? "Working…" : exists ? "Open" : "Create", true, (_e, cx) => this.create(cx))))
+      .child(this.renderList(t));
+  }
+}

@@ -1,0 +1,3 @@
+{
+  "global": { "cmd-alt-n": "mod.open:issue-worktree" }
+}
