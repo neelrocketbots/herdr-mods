@@ -2,7 +2,7 @@
 # Static checks for CI and before a commit (no Herdr app needed):
 # every mod script parses, every JSON file is valid, the shared helpers are
 # identical copies, the custom-herdr bundle matches the units, and every unit
-# has its RECIPE.md and preview.png.
+# has its RECIPE.md, preview.png, README.md and screenshot.png.
 set -eu
 cd "$(dirname "$0")/.."
 fail=0
@@ -23,6 +23,9 @@ for dir in */mods; do
 	unit=$(dirname "$dir")
 	[ -f "$unit/RECIPE.md" ] || err "$unit has no RECIPE.md"
 	[ -f "$unit/preview.png" ] || err "$unit has no preview.png"
+	[ -f "$unit/README.md" ] || err "$unit has no README.md"
+	[ -f "$unit/screenshot.png" ] || err "$unit has no screenshot.png"
+	grep -q 'screenshot.png' "$unit/README.md" 2>/dev/null || err "$unit/README.md doesn't show screenshot.png"
 done
 [ "$fail" = 0 ] && echo "all checks passed"
 exit "$fail"
