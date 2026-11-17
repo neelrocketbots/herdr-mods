@@ -21,7 +21,10 @@ works as in Herdr's panel.
   file icons, the name, and a git mark on the right: `A` in `ansi2`, `D` or `U`
   in `ansi1`, others in `blocked`.
 - An open file: rendered markdown (headings, lists, inline code, code blocks,
-  links), selectable, in a scrollable area with 18px by 14px padding. Source
+  links, images), selectable, in a scrollable area with 18px by 14px padding.
+  Images sit between the text sections at their own size (or their
+  `width="..."`), no wider than the preview, side by side when a line holds
+  several; a click opens the image's link, else the image. Source
   view and every other file show a read-only editor with syntax colors.
 
 ## How it behaves
@@ -34,6 +37,14 @@ works as in Herdr's panel.
 - Files ending in `.md`, `.markdown`, `.mdx`, `.mdown` or `.mkd` open rendered.
   The Source button switches to the editor view and back. The choice stays
   while you browse other files.
+- Images: lines holding only images (`![alt](src)`, `[![alt](src)](href)`,
+  `<img src width>`, with `<p>`/`<a>` wrappers) become image rows; consecutive
+  lines share a row, code blocks are skipped, and images inside text show their
+  alt text. Local images (relative to the file, absolute or `file://`) are
+  copied, remote ones downloaded once per app run with `curl`, into
+  `~/.config/herdr-app/data/files-md/img/<hash>.<ext>`; `sips` (or an SVG's
+  `width`/`height`/`viewBox`) gives the size. Until loaded a row shows "… alt";
+  a failure or a file on another machine shows "🖼 alt".
 - "Open in <editor>" opens `<root>/<file>` in the editor set in
   `~/.config/herdr-app/herdr-mods.json` (`editor`: `zed`, `cursor`, `vscode`,
   `windsurf`, `sublime`, `webstorm`, `idea`, `nova`, or `{ name, app }` /
@@ -49,14 +60,22 @@ works as in Herdr's panel.
 - A copy of Herdr's shipped `files` mod (Apache-2.0), in a block
   `{ "mod": "files-md" }`. In the custom-herdr layout it's the `files` child of
   the `panel-body` stack.
-- Additions: gpui-base `TextView.markdown(id, text).selectable(true)` for the
-  preview, a `source` flag, and `editor.js` for the button.
+- Additions: gpui-base `TextView.markdown(id, text).selectable(true)` for each
+  text section, gpui-kit `image(path).w().h()` for images
+  (`markdown-images.js`: `splitImages`, `loadImage`), a `source` flag, and
+  `editor.js` for the button.
 - herdr: `spaces`, `panes`, `focused`, `exec`, `readTextFile`, `watchFolder`,
   `theme`, `settings`, `window`, `notify`, `checking`, `shared`.
-- Programs: `sh` to list folders, `git` for marks (as shipped), and the
-  editor's CLI or `open -a`.
+- Programs: `sh` to list folders, `git` for marks (as shipped), `cp`, `curl`
+  and `sips` for images, the editor's CLI or `open -a`, and `open` for image
+  clicks.
 
 ## Watch out
+
+- `TextView.markdown` draws no images at all (local, `file://`, remote or
+  `<img>`), and `image()` only loads paths under the app folder: absolute paths
+  draw nothing. Hence the split and the cache.
+- `image()` needs a width and height; keep the aspect from the file's size.
 
 - Herdr rewrites its shipped mods on every start, so changes must live in a
   copy. Clone with `mod.clone`, which rewrites the copy's own `mods/<name>/`

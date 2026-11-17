@@ -23,7 +23,7 @@ and a screenshot. Take one or all.
 | [`quick-links`](quick-links) | Top bar: GitHub repo, the branch's PR with a CI dot, open PRs in other repos that name the branch's Linear issue, the Linear issue, your editor. Adds **PRs**, **Worktree** and **Merged · clean up** when `pr-inbox` / `issue-worktree` are installed |
 | [`issue-worktree`](issue-worktree) | Dialog (⌘⌥N): make `<repo>/.worktrees/<name>` on branch `<name>` from a fresh `origin/master`; list worktrees with PR and CI; rename, remove, open in your editor |
 | [`pr-inbox`](pr-inbox) | PRs waiting on your review and your own, across repos. A side panel in `custom-herdr`, a dialog (⌘⌥P) anywhere else |
-| [`files-md`](files-md) | Herdr's Files panel, plus rendered markdown and open in your editor |
+| [`files-md`](files-md) | Herdr's Files panel, plus rendered markdown (images included) and open in your editor |
 | [`changes-editor`](changes-editor) | Herdr's Changes panel, plus open in your editor |
 | [`custom-herdr`](custom-herdr) | Layout: Herdr's main layout with all of the above wired in (bundles its own copies of the mods) |
 
@@ -86,7 +86,8 @@ They're trusted code, like any Herdr mod, and run as you:
 | quick-links | `git` (remote, branch, rev-parse), `gh pr view`, `gh search prs`, your editor, `open` | GitHub, through `gh` | reads `herdr-mods.json` and other mods' `mod.json` |
 | issue-worktree | `git` (fetch, worktree add/move/remove, branch -m/-D, status), `gh api graphql`, your editor | GitHub (`gh`), your git remote (`git fetch`) | appends `.worktrees/` to the repo's `.git/info/exclude` when it isn't ignored; reads `herdr-mods.json` |
 | pr-inbox | `gh api graphql`, `open` | GitHub, through `gh` | none |
-| files-md, changes-editor | Herdr's own (`git`, file reads) plus your editor | none added | reads `herdr-mods.json` |
+| files-md | Herdr's own (`git`, file reads), your editor, `cp`/`curl`/`sips` for markdown images | remote images in markdown files (`curl`) | reads `herdr-mods.json`; caches images in `data/files-md/img` |
+| changes-editor | Herdr's own (`git`, file reads) plus your editor | none added | reads `herdr-mods.json` |
 
 Nothing is sent anywhere else, and no token is stored: `gh` uses its own login.
 Removing a worktree runs `git branch -D` (after a confirm that warns about

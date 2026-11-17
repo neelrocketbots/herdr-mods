@@ -3,10 +3,11 @@
 // (Preview / Source toggle in the header) and opens the shown file in your
 // editor (herdr-mods.json). Shipped mods are rewritten on every
 // start, so changes live here; the custom-herdr layout's Files block points at it.
-import { View, div, svg } from "gpui-kit";
+import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, notify, checking, shared } from "herdr";
 import { openInEditor, editorName } from "./editor.js";
+import { splitImages, loadImage } from "./markdown-images.js";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -139,7 +140,7 @@ export default class Files extends View {
   }
 
   show(path, cx) {
-    this.code?.release(); this.code = null; this.markdown = null; this.file = path; this.fileError = null;
+    this.code?.release(); this.code = null; this.markdown = null; this.mdParts = null; this.images = new Map(); this.file = path; this.fileError = null;
     if (!path || !cx) return;
     const context = this.context, root = this.root, on = this.on;
     cx.spawn(async cx => {
@@ -149,7 +150,21 @@ export default class Files extends View {
         if (text === null) { this.fileError = "This file is no longer available"; return; }
         if (text.includes("\0")) { this.fileError = "Binary file · no text preview"; return; }
         const t = theme(), ext = path.includes(".") ? path.split(".").pop() : "txt";
-        if (MARKDOWN.has(ext.toLowerCase())) this.markdown = text.length > 400000 ? text.slice(0, 400000) + "\n\n… (file truncated)" : text;
+        if (MARKDOWN.has(ext.toLowerCase())) {
+          this.markdown = text.length > 400000 ? text.slice(0, 400000) + "\n\n… (file truncated)" : text;
+          // TextView draws no images: lift them out and load each into the app folder.
+          this.mdParts = splitImages(this.markdown);
+          const dir = `${root}/${path}`.split("/").slice(0, -1).join("/");
+          for (const part of this.mdParts) for (const img of part.images ?? []) {
+            if (on) { this.images.set(img, null); continue; } // a file on another machine: alt text only
+            cx.spawn(async cx => {
+              const info = await loadImage(img.src, dir);
+              if (this.file !== path) return;
+              this.images.set(img, info);
+              cx.notify();
+            });
+          }
+        }
         this.code = EditorState.new({ language: LANG[ext] ?? ext, readonly: true,
           value: text.length > 400000 ? text.slice(0, 400000) + "\n… (file truncated)" : text,
           font_family: settings().font_family, font_size: 12,
@@ -162,6 +177,20 @@ export default class Files extends View {
   // Opens the shown file in the configured editor (local files only).
   openInEditor() {
     openInEditor(`${this.root}/${this.file}`);
+  }
+
+  // One markdown image: drawn at its own size (or its width="..."), no wider than
+  // the preview; a click opens its link, else the image itself.
+  mdImage(img, key, t) {
+    const info = this.images.get(img);
+    if (!info) return div().text_size(12).text_color(t.dim).child(`${info === null ? "🖼" : "…"} ${img.alt || img.src.split("/").pop()}`);
+    const avail = Math.max(80, (this.mdWidth ?? 360) - 36);
+    const pct = img.width?.endsWith("%") ? parseFloat(img.width) / 100 : null;
+    const want = pct ? pct * avail : parseFloat(img.width ?? "") || info.w || avail;
+    const w = Math.min(avail, want), h = info.w ? (w * info.h) / info.w : w * 0.6;
+    return div().id(`md-img-${key}`).flex_none().cursor_pointer().tooltip(img.alt || img.src)
+      .on_click(() => exec("open", [img.href && /^https?:/i.test(img.href) ? img.href : info.open]).catch(() => {}))
+      .child(image(info.path).w(w).h(h));
   }
 
   rows(prefix, depth, out, t) {
@@ -201,8 +230,11 @@ export default class Files extends View {
         .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")))))
       .when(Boolean(this.file), el => el.child(
         this.markdown != null && !this.source
-          ? v_flex().id("files-md-preview").flex_1().min_h(0).overflow_y_scrollbar().px(18).py(14)
-              .child(TextView.markdown(`md-${this.file}`, this.markdown).selectable(true))
+          ? v_flex().id("files-md-preview").flex_1().min_h(0).overflow_y_scrollbar().px(18).py(14).gap(6)
+              .on_size_change((size, cx) => { if (Math.abs((this.mdWidth ?? 0) - size.width) > 1) { this.mdWidth = size.width; cx.notify(); } })
+              .children((this.mdParts ?? [{ md: this.markdown }]).map((part, i) => part.md !== undefined
+                ? TextView.markdown(`md-${this.file}-${i}`, part.md).selectable(true)
+                : h_flex().flex_wrap().gap(8).items_start().children(part.images.map((img, j) => this.mdImage(img, `${i}-${j}`, t)))))
           : this.code ? Editor.new(this.code).flex_1().min_h(0) : div().p(12).text_color(t.dim).child(this.fileError || "Loading file…")));
   }
 }
