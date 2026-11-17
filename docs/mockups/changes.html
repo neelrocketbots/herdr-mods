@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"></head>
+<body style="padding:20px">
+<div class="side col" style="width:420px;height:470px;background:var(--bg)">
+  <div class="head row"><b>Changes</b><span style="border:1px solid var(--border);border-radius:4px;padding:0 5px;font-size:10px;color:var(--muted)">3 files</span><div class="grow"></div>
+    <span style="font-size:11px;color:var(--green)">+42</span><span style="font-size:11px;color:var(--red)">−7</span><span class="btn" style="background:var(--chrome);height:22px">Open in Zed</span></div>
+  <div class="col" style="padding:6px;border-bottom:1px solid var(--border)">
+    <div class="row" style="height:28px;padding:0 8px;gap:8px;border-radius:7px;background:var(--raised)"><span style="width:14px;font-size:11px;color:var(--yellow)">M</span><span class="dim">src/billing/</span>InvoicesTable.vue<span class="grow"></span><span style="font-size:11px;color:var(--green)">+28</span><span style="font-size:11px;color:var(--red)">−5</span></div>
+    <div class="row" style="height:28px;padding:0 8px;gap:8px"><span style="width:14px;font-size:11px;color:var(--green)">A</span><span class="dim">src/billing/</span>useCsvExport.ts<span class="grow"></span><span style="font-size:11px;color:var(--green)">+12</span></div>
+    <div class="row" style="height:28px;padding:0 8px;gap:8px"><span style="width:14px;font-size:11px;color:var(--yellow)">M</span><span class="dim">docs/</span>billing-export.md<span class="grow"></span><span style="font-size:11px;color:var(--green)">+2</span><span style="font-size:11px;color:var(--red)">−2</span></div>
+  </div>
+<div style="font:11px/20px var(--mono);padding:6px 0;color:#c9cbd0;white-space:pre"><span class="dim">  @@ -41,7 +41,11 @@</span>
+   &lt;template #actions&gt;
+<span style="background:#3a1f1f;display:block">-    &lt;Button @click="print"&gt;Print&lt;/Button&gt;</span><span style="background:#1d3322;display:block">+    &lt;Button @click="print"&gt;Print&lt;/Button&gt;
++    &lt;Button :loading="exporting" @click="start"&gt;
++      Export CSV
++    &lt;/Button&gt;</span>   &lt;/template&gt;</div>
+  <div class="grow"></div>
+  <div class="row" style="padding:10px;gap:8px;border-top:1px solid var(--border)"><div class="grow field" style="border-color:var(--border);height:32px;color:var(--dim)">Commit message</div><div class="cta ghost" style="color:var(--dim)">Commit</div></div>
+</div>
+<script src="icons.js"></script>
+</body></html>

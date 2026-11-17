@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"></head>
+<body style="padding:24px">
+<div class="side col" style="width:440px;height:476px;background:var(--bg)">
+  <div class="head row"><span class="muted">←</span><b>Files</b><span class="grow dim trunc" style="text-align:right;font-size:12px">docs/billing-export.md</span>
+    <span class="btn" style="background:var(--chrome);height:22px">Source</span><span class="btn" style="background:var(--chrome);height:22px">Open in Zed</span></div>
+  <div class="md">
+    <h1>Billing export</h1>
+    <p>Invoices can be exported as CSV from the <code>Invoices</code> table. The export follows the current filters and streams rows, so large accounts don't block the page.</p>
+    <h2>Columns</h2>
+    <ul><li>Invoice number, customer and status</li><li>Amount and currency, as stored</li><li>Issued and paid dates, in the account's timezone</li></ul>
+    <h2>Usage</h2>
+<pre><span class="k">const</span> { start } = useCsvExport(rows, {
+  filename: <span class="s">"invoices.csv"</span>,
+  columns: INVOICE_COLUMNS, <span class="c">// header order</span>
+});</pre>
+  </div>
+</div>
+<script src="icons.js"></script>
+</body></html>

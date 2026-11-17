@@ -1,0 +1,70 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"></head>
+<body>
+<div class="window">
+  <div class="sidebar col">
+    <div class="lights row"><i></i><i></i><i></i></div>
+    <div class="label">Spaces</div>
+    <div class="space row"><span class="badge" style="background:#e0a85a">W</span>web-app</div>
+    <div class="space row sub on"><i data-i="worktree" style="color:var(--dim)"></i>WEB-128<span class="branch dim">WEB-128</span></div>
+    <div class="space row sub"><i data-i="worktree" style="color:var(--dim)"></i>WEB-131<span class="branch dim">WEB-131</span></div>
+    <div class="space row"><span class="badge" style="background:#6fbf73">A</span>api</div>
+    <div class="space row"><span class="badge" style="background:#8fb3e8">D</span>docs</div>
+    <div class="label" style="margin-top:18px">Agents</div>
+    <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>WEB-128<span class="dim trunc">· invoice export</span><span class="ago">2m</span></div>
+    <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>WEB-131<span class="dim trunc">· chart tooltips</span><span class="ago">9m</span></div>
+    <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>api<span class="dim trunc">· rate limits</span><span class="ago">31m</span></div>
+  </div>
+  <div class="main col">
+    <div class="topbar row">
+      <div class="tab row on"><i data-i="claude" style="color:var(--orange)"></i>invoice export</div>
+      <div class="tab row">shell</div>
+      <div class="grow"></div>
+      <div class="btn row"><i data-i="file"></i>Files</div>
+      <div class="btn row"><i data-i="changes"></i>Changes</div>
+      <div class="btn row on"><i data-i="pr"></i>PRs<span class="count">3</span></div>
+      <div class="sep"></div>
+      <div class="btn row"><i data-i="github"></i>web-app</div>
+      <div class="btn row"><i data-i="pr" style="color:var(--green)"></i>#482<span class="dot green" style="width:6px;height:6px"></span></div>
+      <div class="btn row"><i data-i="linear"></i>WEB-128</div>
+      <div class="btn row"><i data-i="worktree"></i>Worktree</div>
+      <div class="btn row"><i data-i="editor"></i>Zed</div>
+    </div>
+    <div class="work row" style="align-items:stretch">
+      <div class="pane col focus">
+        <div class="head row"><i data-i="claude" style="color:var(--orange)"></i>Claude Code<span class="dim">~/code/web-app/.worktrees/WEB-128</span></div>
+<div class="term"><span class="p">❯</span> Add CSV export to the invoices table (WEB-128)
+
+<span class="b">●</span> Reading src/billing/InvoicesTable.vue and the export helpers.
+
+<span class="b">●</span> Added an <span class="y">Export CSV</span> button that streams the current
+  filter's rows through <span class="y">useCsvExport()</span>, with a test for
+  quoted commas and the empty state.
+
+  Ran 2 shell commands
+  <span class="p">✓</span> 46 tests passed · lint clean
+
+<span class="b">●</span> Pushed WEB-128 and opened <span class="b">#482</span> as a draft.
+
+<span class="p">❯</span> <span style="background:#c9cbd0">&nbsp;</span>
+</div>
+      </div>
+      <div class="side col">
+        <div class="head row"><b>Pull requests</b><div class="grow"></div><span class="dim" style="font-size:11px">updated 1m ago</span><i data-i="refresh" style="color:var(--muted)"></i></div>
+        <div class="tabs row"><div class="t row on">Needs your review<span class="dim">3</span></div><div class="t row">Yours<span class="dim">4</span></div></div>
+        <div class="col" style="padding:6px;gap:2px">
+          <div class="pr col hl"><div class="row" style="gap:8px"><span class="grow trunc">Fix timezone drift in monthly reports</span><span class="dot green"></span><span class="dim">↗</span></div>
+            <div class="meta row"><span>web-app#477</span><span>sam-k</span><span style="color:var(--green)">approved</span><span class="grow"></span><span>2h</span></div></div>
+          <div class="pr col"><div class="row" style="gap:8px"><span class="grow trunc">Cache exchange rates per request</span><span class="dot yellow"></span><span class="dim">↗</span></div>
+            <div class="meta row"><span>api#1203</span><span>lee</span><span class="grow"></span><span>5h</span></div></div>
+          <div class="pr col"><div class="row" style="gap:8px"><span class="grow trunc">Dropdown keyboard navigation</span><span class="dot red"></span><span class="dim">↗</span></div>
+            <div class="meta row"><span>ui#91</span><span>mara</span><span style="color:var(--red)">conflicts</span><span class="grow"></span><span>1d</span></div></div>
+          <div class="fold row">▸ Bots (5)</div>
+          <div class="fold row">▸ No activity for 30+ days (2)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="icons.js"></script>
+</body></html>
