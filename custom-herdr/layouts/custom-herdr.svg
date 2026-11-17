@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200">
+  <!-- custom-herdr: Herdr's main layout plus the quick-links top bar and the
+       Files / Changes / PRs side panel. -->
+  <rect width="320" height="200" rx="10" fill="#1b1c1f"/>
+  <!-- sidebar: spaces and agents -->
+  <rect x="0" y="0" width="74" height="200" rx="10" fill="#18191b"/>
+  <rect x="64" y="0" width="10" height="200" fill="#18191b"/>
+  <line x1="74.5" y1="0" x2="74.5" y2="200" stroke="#2d2f34"/>
+  <g fill="#6c6f76">
+    <rect x="10" y="16" width="44" height="4" rx="2"/>
+    <rect x="10" y="28" width="36" height="4" rx="2"/>
+    <rect x="16" y="40" width="34" height="4" rx="2" fill="#4d5057"/>
+    <rect x="16" y="52" width="30" height="4" rx="2" fill="#4d5057"/>
+    <rect x="10" y="64" width="40" height="4" rx="2"/>
+    <rect x="10" y="100" width="24" height="3" rx="1.5" fill="#4d5057"/>
+    <rect x="10" y="112" width="48" height="4" rx="2"/>
+    <rect x="10" y="124" width="42" height="4" rx="2"/>
+  </g>
+  <circle cx="64" cy="114" r="2.5" fill="#e0a85a"/>
+  <!-- top bar: tabs, then Files / Changes / PRs and the quick links -->
+  <line x1="75" y1="22.5" x2="320" y2="22.5" stroke="#2d2f34"/>
+  <rect x="82" y="7" width="30" height="9" rx="3" fill="#8fb3e8"/>
+  <rect x="116" y="7" width="22" height="9" rx="3" fill="#2a2c31"/>
+  <g fill="#3a3d43">
+    <rect x="160" y="8" width="14" height="7" rx="2"/>
+    <rect x="177" y="8" width="18" height="7" rx="2"/>
+  </g>
+  <rect x="198" y="7" width="20" height="9" rx="3" fill="#33363c"/>
+  <circle cx="215" cy="8" r="3" fill="#8fb3e8"/>
+  <line x1="223.5" y1="7" x2="223.5" y2="16" stroke="#3a3d43"/>
+  <rect x="228" y="8" width="18" height="7" rx="2" fill="#3a3d43"/>
+  <rect x="250" y="8" width="13" height="7" rx="2" fill="#3a3d43"/>
+  <circle cx="266" cy="11.5" r="2" fill="#6fbf73"/>
+  <rect x="272" y="8" width="18" height="7" rx="2" fill="#7c6fd6"/>
+  <rect x="294" y="8" width="16" height="7" rx="2" fill="#3a3d43"/>
+  <!-- two terminal panes -->
+  <g fill="none" stroke="#2d2f34">
+    <rect x="81.5" y="29.5" width="74" height="163" rx="4"/>
+    <rect x="160.5" y="29.5" width="70" height="163" rx="4" stroke="#8fb3e8"/>
+  </g>
+  <g fill="#4d5057">
+    <rect x="88" y="38" width="40" height="3" rx="1.5"/>
+    <rect x="88" y="46" width="54" height="3" rx="1.5"/>
+    <rect x="88" y="54" width="30" height="3" rx="1.5"/>
+    <rect x="167" y="38" width="46" height="3" rx="1.5"/>
+    <rect x="167" y="46" width="34" height="3" rx="1.5"/>
+    <rect x="167" y="54" width="52" height="3" rx="1.5"/>
+  </g>
+  <!-- side panel: PR inbox -->
+  <rect x="236.5" y="29.5" width="77" height="163" rx="5" fill="#1e1f23" stroke="#2d2f34"/>
+  <rect x="243" y="36" width="34" height="4" rx="2" fill="#9a9da4"/>
+  <line x1="237" y1="46.5" x2="313" y2="46.5" stroke="#2d2f34"/>
+  <rect x="242" y="51" width="36" height="7" rx="2" fill="#33363c"/>
+  <rect x="281" y="51" width="20" height="7" rx="2" fill="#26282c"/>
+  <g fill="#7d8087">
+    <rect x="243" y="66" width="52" height="3" rx="1.5"/>
+    <rect x="243" y="86" width="44" height="3" rx="1.5"/>
+    <rect x="243" y="106" width="56" height="3" rx="1.5"/>
+    <rect x="243" y="126" width="40" height="3" rx="1.5"/>
+  </g>
+  <g fill="#4d5057">
+    <rect x="243" y="73" width="30" height="2.5" rx="1.25"/>
+    <rect x="243" y="93" width="26" height="2.5" rx="1.25"/>
+    <rect x="243" y="113" width="32" height="2.5" rx="1.25"/>
+    <rect x="243" y="133" width="24" height="2.5" rx="1.25"/>
+  </g>
+  <circle cx="305" cy="67.5" r="2.2" fill="#6fbf73"/>
+  <circle cx="305" cy="87.5" r="2.2" fill="#d9675f"/>
+  <circle cx="305" cy="107.5" r="2.2" fill="#e0c05a"/>
+  <circle cx="305" cy="127.5" r="2.2" fill="#6fbf73"/>
+</svg>

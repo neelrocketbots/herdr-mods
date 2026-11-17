@@ -1,0 +1,6 @@
+{
+  "global": {
+    "cmd-alt-n": "mod.open:issue-worktree",
+    "cmd-alt-p": "mod.open:pr-inbox"
+  }
+}
