@@ -31,6 +31,21 @@ const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 const git = (args, cwd, timeout = 60_000) => exec("git", args, { cwd, timeout });
 
+// Programs whose working folder is inside `path` (a dev server, a shell, an
+// agent): "node (4211)". Removing a worktree under them can stop partway.
+async function runningIn(path) {
+  const r = await exec("lsof", ["-a", "-d", "cwd", "-F", "pcn"], { timeout: 10_000 }).catch(() => null);
+  if (!r?.stdout) return [];
+  const out = [];
+  let pid = null, cmd = null;
+  for (const line of r.stdout.split("\n")) {
+    if (line[0] === "p") pid = line.slice(1);
+    else if (line[0] === "c") cmd = line.slice(1);
+    else if (line[0] === "n" && (line.slice(1) === path || line.slice(1).startsWith(`${path}/`))) out.push(`${cmd} (${pid})`);
+  }
+  return [...new Set(out)];
+}
+
 // PRs per branch, by repo root, kept in module scope on purpose: each dialog
 // open is a new copy of this mod, and module state is shared by copies (until
 // the mod's code changes), so reopening shows the last known PRs at once and
@@ -231,8 +246,8 @@ export default class IssueWorktree extends View {
   askRemove(c, cx) {
     this.renaming = null;
     cx.spawn(async (cx) => {
-      const status = await git(["status", "--porcelain"], c.path);
-      this.confirm = { path: c.path, dirty: status.code !== 0 || status.stdout.trim() !== "" };
+      const [status, running] = await Promise.all([git(["status", "--porcelain"], c.path), runningIn(c.path)]);
+      this.confirm = { path: c.path, dirty: status.code !== 0 || status.stdout.trim() !== "", running };
       cx.notify();
     });
   }
@@ -248,7 +263,19 @@ export default class IssueWorktree extends View {
         const s = spaceOf(c.path, this.list ?? []);
         if (s) run("space.close", { id: s.id, confirmed: true });
         const rm = await git(["worktree", "remove", ...(dirty ? ["--force"] : []), c.path], this.repo.root);
-        if (rm.code !== 0) throw new Error(rm.stderr.trim() || "git worktree remove failed");
+        if (rm.code !== 0) {
+          // A removal that stopped partway (a dev server still running in the
+          // folder, say) leaves files git no longer tracks, and every retry then
+          // fails with "is not a working tree". Once git has let go of it, clear
+          // the leftovers, but only inside <repo>/.worktrees/.
+          await git(["worktree", "prune"], this.repo.root);
+          const listed = (await git(["worktree", "list", "--porcelain"], this.repo.root)).stdout
+            .split("\n").some((l) => l === `worktree ${c.path}`);
+          if (listed || !c.path.startsWith(`${this.repo.root}/.worktrees/`)) throw new Error(rm.stderr.trim() || "git worktree remove failed");
+          const left = await exec("rm", ["-rf", c.path]);
+          if (left.code !== 0) throw new Error(`Couldn't delete the leftover folder: ${left.stderr.trim()}`);
+          notify({ title: "Worktree removed", body: "git had already let go of it; its leftover files were deleted.", level: "info" });
+        }
         if (c.branch) {
           const br = await git(["branch", "-D", c.branch], this.repo.root);
           if (br.code !== 0) notify({ title: "Worktree removed, branch kept", body: br.stderr.trim(), level: "warning" });
@@ -348,8 +375,9 @@ export default class IssueWorktree extends View {
           .child(action(`iw-rm-${i}`, "remove", (cx) => this.askRemove(c, cx), t.ansi1)))
         .child(div().truncate().text_size(11.5).text_color(t.dim).child(tilde(c.path)))
         .when(confirming, (el) => el.child(h_flex().pt(6).gap(6).items_center()
-          .child(div().flex_1().min_w(0).text_size(11.5).text_color(this.confirm.dirty ? t.ansi1 : t.muted)
-            .child(this.confirm.dirty ? "Uncommitted changes will be lost. Remove anyway?" : `Remove the worktree${c.branch ? " and its local branch" : ""}${there ? ", and close its space" : ""}?`))
+          .child(div().flex_1().min_w(0).text_size(11.5).text_color(this.confirm.dirty || this.confirm.running?.length ? t.ansi1 : t.muted)
+            .child((this.confirm.running?.length ? `Still running in it: ${this.confirm.running.join(", ")}. Stop them first. ` : "") +
+              (this.confirm.dirty ? "Uncommitted changes will be lost. Remove anyway?" : `Remove the worktree${c.branch ? " and its local branch" : ""}${there ? ", and close its space" : ""}?`)))
           .child(action(`iw-rm-no-${i}`, "cancel", (cx) => { this.confirm = null; cx.notify(); }))
           .child(div().id(`iw-rm-yes-${i}`).flex_none().px(8).py(2).rounded(5).text_size(11).bg(t.ansi1).text_color(t.background).cursor_pointer()
             .on_click((_e, cx) => { cx.stop_propagation(); this.remove(c, cx); }).child("Remove"))))
