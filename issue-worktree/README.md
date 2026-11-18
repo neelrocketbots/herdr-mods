@@ -13,8 +13,9 @@ its PR and CI, ready to open, rename or remove.
   worktree, opens a space with a terminal in it. A name that exists opens it instead.
 - **List**: every worktree of the repo (not the main checkout), newest commit
   first, filtered as you type. Each row shows its branch, PR (`#482 open`, `draft`,
-  `merged`) with a CI dot, `open` when a space shows it, else how long since its
-  last commit.
+  `merged`) with a CI dot, its Linear issue's status when there's a Linear API
+  key ([setup](../README.md#linear-issue-status-optional); click opens the issue), `open` when a space shows
+  it, else how long since its last commit.
 - **Click a row**: go to its space, or open one there.
 - **Editor icon**: open the worktree in your editor.
 - **rename**: rename the branch; optionally move the folder to
@@ -25,7 +26,8 @@ its PR and CI, ready to open, rename or remove.
   in the folder (a dev server, a shell). If a removal stopped partway, the next
   one clears the leftover files (only inside `.worktrees/`).
 
-All worktrees' PRs come from one GitHub request, remembered for a minute between opens.
+All worktrees' PRs come from one GitHub request, and their Linear statuses from
+one Linear request, both remembered for a minute between opens.
 
 ## Install
 
@@ -46,5 +48,6 @@ branch is `BASE` at the top of `main.js` (`origin/master`).
 `git fetch`, `git worktree add/move/remove`, `git branch -m/-D`, `git status`;
 `gh api graphql` (GitHub, with `gh`'s login); your editor. When the repo doesn't
 already ignore `.worktrees/`, it appends that line to `.git/info/exclude`.
+With a Linear key: `security` reads it from the Keychain, `curl` asks Linear's API.
 
 How it's built: [RECIPE.md](RECIPE.md). Part of [herdr-mods](../README.md).

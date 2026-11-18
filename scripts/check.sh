@@ -10,7 +10,7 @@ err() { echo "FAIL: $*" >&2; fail=1; }
 
 for f in */mods/*/*.js; do node --check "$f" 2>/dev/null || err "$f doesn't parse"; done
 for f in $(git ls-files '*.json'); do jq empty "$f" 2>/dev/null || err "$f isn't valid JSON"; done
-for helper in editor.js ci.js; do
+for helper in editor.js ci.js linear.js; do
 	n=$(for f in */mods/*/"$helper"; do [ -f "$f" ] && shasum "$f" | cut -d' ' -f1; done | sort -u | wc -l | tr -d ' ')
 	[ "$n" -le 1 ] || err "copies of $helper differ (keep them identical)"
 done
