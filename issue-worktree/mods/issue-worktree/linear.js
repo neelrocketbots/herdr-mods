@@ -45,8 +45,7 @@ async function graphql(query) {
   if (r.code !== 0) throw new Error(r.stderr.trim() || "Linear request failed");
   const body = JSON.parse(r.stdout);
   if (body.errors?.some((e) => e.extensions?.code === "AUTHENTICATION_ERROR")) throw new NoLinearKey("Linear refused the API key");
-  if (!body.data && body.errors?.length) throw new Error(body.errors[0].message);
-  return body.data;
+  return { data: body.data ?? null, errors: body.errors ?? [] };
 }
 
 const FIELDS = "identifier title url state { name type color }";
@@ -54,25 +53,25 @@ const pack = (n) => ({ id: n.identifier, title: n.title, url: n.url, state: n.st
   color: /^#[0-9a-f]{6}$/i.test(n.state.color ?? "") ? n.state.color : null });
 
 // IDs -> { [asked ID]: { id (current; differs once moved to another team),
-// title, url, state, type, color } | null (not found) }. One request for all
-// by team key + number; IDs not found that way (an issue moved to another
-// team keeps answering to its old ID) are asked for one by one.
+// title, url, state, type, color } | null (not found) }. One request, one
+// aliased issue(id:) per ID (an issue moved to another team answers to its
+// old ID too). One missing ID makes Linear drop the whole answer, so those
+// named in the errors are marked not found and the rest asked again.
 export async function issueStatus(ids) {
-  const want = [...new Set(ids)].map((id) => { const [team, n] = id.split("-"); return { id, team, n: Number(n) }; });
+  let want = [...new Set(ids)];
   const out = {};
-  if (!want.length) return out;
-  const or = want.map((w) => `{ team: { key: { eq: ${JSON.stringify(w.team)} } }, number: { eq: ${w.n} } }`).join(", ");
-  const data = await graphql(`query { issues(first: ${want.length}, filter: { or: [${or}] }) { nodes { ${FIELDS} } } }`);
-  for (const n of data.issues?.nodes ?? []) out[n.identifier] = pack(n);
-  await Promise.all(want.filter((w) => !(w.id in out)).map(async (w) => {
-    try {
-      const d = await graphql(`query { issue(id: ${JSON.stringify(w.id)}) { ${FIELDS} } }`);
-      out[w.id] = d.issue ? pack(d.issue) : null;
-    } catch (e) {
-      if (e instanceof NoLinearKey) throw e;
-      out[w.id] = null;
+  for (let round = 0; want.length && round < 3; round++) {
+    const fields = want.map((id, i) => `i${i}: issue(id: ${JSON.stringify(id)}) { ${FIELDS} }`).join("\n");
+    const { data, errors } = await graphql(`query { ${fields} }`);
+    if (data) {
+      want.forEach((id, i) => { out[id] = data[`i${i}`] ? pack(data[`i${i}`]) : null; });
+      return out;
     }
-  }));
+    const missing = new Set(errors.map((e) => e.path?.[0]).filter((a) => /^i\d+$/.test(a ?? "")).map((a) => want[Number(a.slice(1))]));
+    if (!missing.size) throw new Error(errors[0]?.message ?? "Linear request failed");
+    for (const id of missing) out[id] = null;
+    want = want.filter((id) => !missing.has(id));
+  }
   return out;
 }
 

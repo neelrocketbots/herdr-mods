@@ -20,7 +20,9 @@ folder, git remote and branch, and changes as you move between terminals.
   background is `selected` while that panel is showing, otherwise `chrome`.
   When PRs wait on your review it carries a count pill: 10.5px text, `accent`
   background, `background` text, 8px corners.
-- A 1px by 16px `border` divider, then the links:
+- **Worktree** (in a GitHub repo, with issue-worktree installed): the worktree
+  icon and "Worktree", beside PRs.
+- A 1px by 16px `border` divider (only when there are links after it), then the links:
   1. **Repo**: the GitHub icon and the repo name, e.g. `web-app`.
   2. **PR**: the PR icon tinted by state (open `ansi2`, merged `ansi5`, closed
      `ansi1`, draft `dim`), the label `#482`, then for open PRs a 6px CI dot
@@ -30,11 +32,10 @@ folder, git remote and branch, and changes as you move between terminals.
      repo name, e.g. `ui#91`.
   4. **Merged · clean up** in `ansi5`, on a worktree whose PR is merged.
   5. **Linear**: the Linear icon and the issue ID, e.g. `WEB-140`. With a Linear
-     API key: `WEB-140 · In Review` with a 6px dot in the status's Linear color,
+     API key: `WEB-140 · In Review` with the Linear icon in the status's Linear color,
      tooltip "In Review: <title>"; an issue moved to another team shows its new
      ID ("(was WEB-140)").
-  6. **Worktree**: the worktree icon and "Worktree".
-  7. **Editor**: a code icon and the editor's name, e.g. "Zed".
+  6. **Editor**, last: a code icon and the editor's name, e.g. "Zed".
 - Tooltips: the PR's state and title plus the CI result and the names of the
   failing checks; "owner/repo" on the repo; "Open <folder> in <editor>".
 
@@ -78,8 +79,9 @@ folder, git remote and branch, and changes as you move between terminals.
   owner. `editor` names the editor. Linear status comes from `linear.js` (shared
   with issue-worktree): a shell reads the API key (Keychain service
   `herdr-mods-linear`, else `$LINEAR_API_KEY`) and pipes it to `curl -H @-`;
-  one GraphQL `issues` query by team key + number, then `issue(id:)` for IDs
-  not found that way (moved issues answer to old IDs). Status is cached 2 min;
+  one GraphQL request with an aliased `issue(id:)` per ID (moved issues answer
+  to old IDs). A missing ID nulls Linear's whole answer, so IDs named in the
+  errors are marked not found and the rest asked again. Status is cached 2 min;
   with no key (or a refused one), Linear is asked again after 5 min. The editor's name is published once per
   change as `shared("herdr-mods.editor")`. Invalid JSON gives one error toast
   until it's fixed.

@@ -80,10 +80,11 @@ Changes apply within a few seconds. Other knobs are constants at the top of each
 ## Linear issue status (optional)
 
 With a Linear API key, the top bar's Linear button reads `WEB-140 · In Review`
-with the status's color, and each worktree row shows its issue's status.
+with the Linear logo in the status's color, and each worktree row shows its
+issue's status.
 
 1. In Linear, **Settings → Account → Security & access → Personal API keys →
-   New key**, with read access only.
+   New key**. Give it **Read** permission only: the mods never write to Linear.
 2. Put it in your macOS Keychain (this prompts for it, so it stays out of your
    shell history):
 

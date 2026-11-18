@@ -28,7 +28,7 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 - Rows of at least 44px with 7px corners. Line one: the branch (or "detached"),
   a PR chip (`#482 open`, `#479 draft`, `#465 merged`; 11px, tinted `ansi2`,
   `ansi5`, `ansi1`, or `dim` for drafts) with a 6px CI dot on open PRs, then
-  the Linear status chip (6px dot in the status's color, then e.g. "In Review",
+  the Linear status chip (12px Linear icon in the status's color, then e.g. "In Review",
   11px `muted`; tooltip "<ID>: <title>", click opens the issue), then
   "open" in `accent` when a space shows it, else how long since its last commit
   (`5m`, `3h`, `2d`, `1mo`), then a 13px editor icon, "rename" and "remove"

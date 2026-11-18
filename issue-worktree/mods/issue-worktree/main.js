@@ -399,7 +399,7 @@ export default class IssueWorktree extends View {
             .text_size(11).text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.raised).text_color(t.foreground))
             .tooltip(`${c.status.id}: ${c.status.title}${c.status.id !== c.issue ? ` (was ${c.issue})` : ""}`)
             .on_click((_e, cx) => { cx.stop_propagation(); exec("open", [c.status.url]).catch(() => {}); })
-            .child(div().size(6).rounded(3).bg(c.status.color ?? t[STATUS_COLOR[c.status.type] ?? "muted"]))
+            .child(svg("mods/issue-worktree/linear.svg").size(12).text_color(c.status.color ?? t[STATUS_COLOR[c.status.type] ?? "muted"]))
             .child(c.status.state)))
           .when(Boolean(there), (el) => el.child(div().flex_none().text_size(11).text_color(t.accent).child("open")))
           .when(!there && c.at > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(ago(c.at))))
