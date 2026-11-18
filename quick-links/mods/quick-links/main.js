@@ -413,12 +413,15 @@ export default class QuickLinks extends View {
       .tooltip(waiting ? `${waiting} PR${waiting === 1 ? "" : "s"} waiting on your review` : "Pull requests")
       .child(svg(icon("pr")).size(14)).child("PRs")
       .when(waiting > 0, (el) => el.child(div().px(5).rounded(8).text_size(10.5).bg(t.accent).text_color(t.background).child(String(waiting))));
+    // PRs and Worktree together, then the focused branch's links, the editor last.
+    const tools = this.links.filter((l) => l.id === "worktree"), web = this.links.filter((l) => l.id !== "worktree");
     return h_flex().id("root").size_full().items_center().justify_end().pr(10)
       .bg(t.chrome).border_b(1).border_color(t.border)
       .child(h_flex().id("ql-content").flex_none().h_full().gap(3).items_center()
         .on_size_change((size) => this.fit(size.width))
         .when(hasPrs, (el) => el.child(prsButton))
-        .when(this.links.length > 0, (el) => el.child(div().w(1).h(16).mx(4).bg(t.border)))
-        .children(this.links.map(button)));
+        .children(tools.map(button))
+        .when(web.length > 0 && (hasPrs || tools.length > 0), (el) => el.child(div().w(1).h(16).mx(4).bg(t.border)))
+        .children(web.map(button)));
   }
 }

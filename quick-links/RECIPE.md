@@ -20,7 +20,9 @@ folder, git remote and branch, and changes as you move between terminals.
   background is `selected` while that panel is showing, otherwise `chrome`.
   When PRs wait on your review it carries a count pill: 10.5px text, `accent`
   background, `background` text, 8px corners.
-- A 1px by 16px `border` divider, then the links:
+- **Worktree** (in a GitHub repo, with issue-worktree installed): the worktree
+  icon and "Worktree", beside PRs.
+- A 1px by 16px `border` divider (only when there are links after it), then the links:
   1. **Repo**: the GitHub icon and the repo name, e.g. `web-app`.
   2. **PR**: the PR icon tinted by state (open `ansi2`, merged `ansi5`, closed
      `ansi1`, draft `dim`), the label `#482`, then for open PRs a 6px CI dot
@@ -33,8 +35,7 @@ folder, git remote and branch, and changes as you move between terminals.
      API key: `WEB-140 · In Review` with the Linear icon in the status's Linear color,
      tooltip "In Review: <title>"; an issue moved to another team shows its new
      ID ("(was WEB-140)").
-  6. **Worktree**: the worktree icon and "Worktree".
-  7. **Editor**: a code icon and the editor's name, e.g. "Zed".
+  6. **Editor**, last: a code icon and the editor's name, e.g. "Zed".
 - Tooltips: the PR's state and title plus the CI result and the names of the
   failing checks; "owner/repo" on the repo; "Open <folder> in <editor>".
 
