@@ -21,7 +21,9 @@ its PR and CI, ready to open, rename or remove.
   `.worktrees/<new name>` too (closes and reopens its space). Warns when the branch
   was pushed: the remote keeps the old name.
 - **remove**: removes the worktree, its local branch and its space, after a
-  confirm that warns about uncommitted changes.
+  confirm that warns about uncommitted changes and names anything still running
+  in the folder (a dev server, a shell). If a removal stopped partway, the next
+  one clears the leftover files (only inside `.worktrees/`).
 
 All worktrees' PRs come from one GitHub request, remembered for a minute between opens.
 

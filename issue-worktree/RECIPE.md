@@ -103,6 +103,13 @@ with its pull request and CI, an open-in-editor button, rename and remove.
   loading it from another mod's folder leaves it blank when that mod isn't installed.
 - `BASE` (`origin/master`) is a constant at the top of `main.js`.
 
+- A process running inside the worktree (a dev server, an agent's shell) can make
+  `git worktree remove` stop partway: git drops its record and the `.git` file but
+  files stay, and every retry fails with "is not a working tree". The confirm lists
+  such processes (`lsof -a -d cwd`); on failure the mod runs `git worktree prune`
+  and, if git no longer lists the path and it's inside `<repo>/.worktrees/`,
+  deletes the folder.
+
 ## Done when
 
 - Typing `WEB-140` and pressing Enter creates `.worktrees/WEB-140` on branch
