@@ -9,17 +9,23 @@ import { h_flex } from "gpui-base";
 import { exec, focused, panes, spaces, run, theme, window, checking, props, notify, openOverlay, layout, shared, setShared, readTextFile, appHome } from "herdr";
 import { ciSummary, CI_COLOR, CI_WORD } from "./ci.js";
 import { readSettings, editorOf, openInEditor, SETTINGS } from "./editor.js";
+import { linearId, issueStatus, NoLinearKey, STATUS_COLOR } from "./linear.js";
 
 // Settings come from herdr-mods.json in the app folder (see editor.js),
 // re-read every SETTINGS_MS. `linear` maps a GitHub owner to its Linear
 // workspace slug, "*" for any owner. Linear links and issue-PR lookups only
 // happen for mapped owners, so personal repos with names like `plan-1/...`
 // stay quiet. No mapping, no Linear links. `editor` picks the editor button's app.
+// With a Linear API key in the Keychain, the Linear button shows the issue's
+// status (see linear.js).
 const SETTINGS_MS = 5000;
 // No PR lookup on these: they are merge targets, not PR heads.
 const BASE_BRANCHES = new Set(["main", "master", "dev", "develop", "staging", "production"]);
 const REPO_TTL = 60_000;
 const ISSUE_TTL = 5 * 60_000;
+// Linear status: asked again after STATUS_TTL; without a key, checked again after NO_KEY_TTL.
+const STATUS_TTL = 2 * 60_000;
+const NO_KEY_TTL = 5 * 60_000;
 // How long a PR lookup stays fresh: running CI changes fast, a merged or
 // closed PR not at all, a branch without a PR yet somewhere between.
 function prTtl(pr) {
@@ -44,24 +50,6 @@ const PR_COLOR = { OPEN: "ansi2", MERGED: "ansi5", CLOSED: "ansi1" };
 function parseGitHub(url) {
   const m = url.trim().match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
   return m ? { owner: m[1], repo: m[2] } : null;
-}
-
-// A Linear issue ID anywhere in the branch: <TEAM>-<number> between
-// separators, any team key. One written in UPPERCASE wins (people type IDs
-// that way: `merge/main-into-WEB-204-x`), else the first one.
-// Version-like words (`node-18`, `vue-3`, `step-2`) are not team keys.
-// `hotfix/web-1138-title`, `sam/api-396-x` -> WEB-1138, API-396.
-const NOT_TEAMS = new Set(["v", "ver", "version", "node", "react", "vue", "angular", "next", "nuxt", "vite", "webpack",
-  "es", "ts", "js", "py", "python", "java", "php", "ruby", "go", "ios", "android", "macos", "win", "utf", "iso", "rfc",
-  "sha", "md5", "http", "tls", "ssl", "pnpm", "npm", "yarn", "step", "phase", "part", "day", "week", "sprint", "round", "try", "attempt"]);
-
-function linearId(branch) {
-  const found = [];
-  for (const m of branch.matchAll(/(?<=^|[\/_.-])([A-Za-z][A-Za-z0-9]{0,9})-(\d{1,6})(?=$|[\/_.-])/g)) {
-    if (!NOT_TEAMS.has(m[1].toLowerCase())) found.push({ team: m[1], n: m[2] });
-  }
-  const pick = found.find((f) => f.team === f.team.toUpperCase() && /[A-Z]/.test(f.team)) ?? found[0];
-  return pick ? `${pick.team.toUpperCase()}-${pick.n}` : null;
 }
 
 function openUrl(url) {
@@ -89,6 +77,8 @@ export default class QuickLinks extends View {
     this.prs = new Map();      // machine|owner/repo#branch -> { value, at }
     this.issuePrs = new Map(); // machine|owner#ISSUE-ID -> { value: [pr], at }: open PRs naming the issue, any repo
     this.trees = new Map();    // machine|cwd -> { top, linked }: is it a worktree (not the main checkout)
+    this.statuses = new Map(); // ISSUE-ID -> { value: { id, title, url, state, type, color } | null, at }
+    this.noKeyAt = 0;        // when Linear last had no key (or refused it)
     this.inflight = new Map(); // same keys -> Promise, so one lookup per key
     this.key = null;
     this.gen = 0;
@@ -144,7 +134,7 @@ export default class QuickLinks extends View {
   restore() {
     try {
       const c = JSON.parse(localStorage.getItem(CACHE_KEY) ?? "{}");
-      for (const name of ["repos", "prs", "issuePrs", "trees"]) {
+      for (const name of ["repos", "prs", "issuePrs", "trees", "statuses"]) {
         for (const [k, v] of c[name] ?? []) if (v && typeof v.at === "number") this[name].set(k, v);
       }
     } catch {}
@@ -155,10 +145,11 @@ export default class QuickLinks extends View {
     this.dirty = false;
     const oldest = Date.now() - CACHE_DAYS * 86400_000;
     const keep = (m) => [...m].filter(([, v]) => v.at > oldest).sort((a, b) => b[1].at - a[1].at).slice(0, CACHE_MAX);
-    for (const name of ["repos", "prs", "issuePrs", "trees"]) this[name] = new Map(keep(this[name]));
+    for (const name of ["repos", "prs", "issuePrs", "trees", "statuses"]) this[name] = new Map(keep(this[name]));
     try {
       localStorage.setItem(CACHE_KEY, JSON.stringify({
-        repos: [...this.repos], prs: [...this.prs], issuePrs: [...this.issuePrs], trees: [...this.trees] }));
+        repos: [...this.repos], prs: [...this.prs], issuePrs: [...this.issuePrs], trees: [...this.trees],
+        statuses: [...this.statuses] }));
     } catch {}
   }
 
@@ -200,6 +191,13 @@ export default class QuickLinks extends View {
       this.apply(this.build(ctx, branch), cx);
       const repo = this.repos.get(repoKey)?.value;
       if (!repo || !branch || BASE_BRANCHES.has(branch)) return;
+      const linear = this.slug(repo) ? linearId(branch) : null;
+      if (linear && this.wantStatus(linear)) {
+        cx.spawn(async (cx) => {
+          await this.once(`status|${linear}`, () => this.lookupStatus(linear));
+          if (gen === this.gen) this.apply(this.build(ctx, branch), cx);
+        });
+      }
       const prKey = this.prKey(ctx, repo, branch);
       const known = this.prs.get(prKey);
       if (!this.fresh(known, prTtl(known?.value))) await this.once(prKey, () => this.lookupPr(ctx, repo, branch, prKey));
@@ -278,6 +276,23 @@ export default class QuickLinks extends View {
     this.dirty = true;
   }
 
+  // Ask Linear for an issue's status? Not while known to have no key (checked
+  // again after a while), and only when the last answer is old.
+  wantStatus(issue) {
+    if (Date.now() - this.noKeyAt < NO_KEY_TTL) return false;
+    return !this.fresh(this.statuses.get(issue), STATUS_TTL);
+  }
+
+  async lookupStatus(issue) {
+    try {
+      const found = await issueStatus([issue]);
+      this.statuses.set(issue, { value: found[issue] ?? null, at: Date.now() });
+      this.dirty = true;
+    } catch (e) {
+      if (e instanceof NoLinearKey) this.noKeyAt = Date.now();
+    }
+  }
+
   async lookupPr(ctx, repo, branch, key) {
     const out = await output("gh", ["pr", "view", branch, "--repo", `${repo.owner}/${repo.repo}`,
       "--json", "number,url,state,isDraft,title,statusCheckRollup"], ctx, 15000);
@@ -339,8 +354,13 @@ export default class QuickLinks extends View {
     }
 
     if (issue) {
-      links.push({ id: "linear", icon: "linear", label: issue,
-        url: `https://linear.app/${slug}/issue/${issue}`, tip: `Linear ${issue}` });
+      // With status: "WEB-140 · In Review" and the status's color; an issue
+      // moved to another team shows (and opens) its new ID.
+      const s = this.statuses.get(issue)?.value;
+      links.push(s
+        ? { id: "linear", icon: "linear", label: `${s.id} · ${s.state}`, url: s.url, dot: s.color ?? STATUS_COLOR[s.type] ?? "muted",
+            tip: `${s.state}: ${s.title}${s.id !== issue ? ` (was ${issue})` : ""}` }
+        : { id: "linear", icon: "linear", label: issue, url: `https://linear.app/${slug}/issue/${issue}`, tip: `Linear ${issue}` });
     }
     return links;
   }
@@ -371,7 +391,7 @@ export default class QuickLinks extends View {
       .tooltip(l.tip)
       .child(svg(icon(l.icon)).size(14).text_color(l.color ? t[l.color] : t.muted))
       .child(div().max_w(160).truncate().child(l.label))
-      .when(Boolean(l.dot), (el) => el.child(div().size(6).rounded(3).flex_none().bg(t[l.dot])));
+      .when(Boolean(l.dot), (el) => el.child(div().size(6).rounded(3).flex_none().bg(l.dot.startsWith("#") ? l.dot : t[l.dot])));
     // PRs: toggles the pr-inbox panel (the layout's panel-body child "prs"),
     // with how many PRs wait on your review once that panel has loaded.
     const find = (n, id) => !n || typeof n !== "object" ? null : n.id === id ? n : (n.children ?? []).reduce((f, c) => f ?? find(c, id), null);

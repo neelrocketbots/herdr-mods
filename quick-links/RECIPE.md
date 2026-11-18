@@ -29,7 +29,10 @@ folder, git remote and branch, and changes as you move between terminals.
      open PRs from the owner's other repos that mention it, labelled with the
      repo name, e.g. `ui#91`.
   4. **Merged · clean up** in `ansi5`, on a worktree whose PR is merged.
-  5. **Linear**: the Linear icon and the issue ID, e.g. `WEB-140`.
+  5. **Linear**: the Linear icon and the issue ID, e.g. `WEB-140`. With a Linear
+     API key: `WEB-140 · In Review` with a 6px dot in the status's Linear color,
+     tooltip "In Review: <title>"; an issue moved to another team shows its new
+     ID ("(was WEB-140)").
   6. **Worktree**: the worktree icon and "Worktree".
   7. **Editor**: a code icon and the editor's name, e.g. "Zed".
 - Tooltips: the PR's state and title plus the CI result and the names of the
@@ -72,7 +75,12 @@ folder, git remote and branch, and changes as you move between terminals.
 - The editor button opens the terminal's folder in the configured editor.
 - Settings come from `~/.config/herdr-app/herdr-mods.json`, re-read every 5s.
   `linear` maps a GitHub owner to its Linear workspace slug, with `"*"` for any
-  owner. `editor` names the editor. The editor's name is published once per
+  owner. `editor` names the editor. Linear status comes from `linear.js` (shared
+  with issue-worktree): a shell reads the API key (Keychain service
+  `herdr-mods-linear`, else `$LINEAR_API_KEY`) and pipes it to `curl -H @-`;
+  one GraphQL `issues` query by team key + number, then `issue(id:)` for IDs
+  not found that way (moved issues answer to old IDs). Status is cached 2 min;
+  with no key (or a refused one), Linear is asked again after 5 min. The editor's name is published once per
   change as `shared("herdr-mods.editor")`. Invalid JSON gives one error toast
   until it's fixed.
 - The block resizes itself to its content plus 10px (`layout.resize`).

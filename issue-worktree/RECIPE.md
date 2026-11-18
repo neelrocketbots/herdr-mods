@@ -28,6 +28,8 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 - Rows of at least 44px with 7px corners. Line one: the branch (or "detached"),
   a PR chip (`#482 open`, `#479 draft`, `#465 merged`; 11px, tinted `ansi2`,
   `ansi5`, `ansi1`, or `dim` for drafts) with a 6px CI dot on open PRs, then
+  the Linear status chip (6px dot in the status's color, then e.g. "In Review",
+  11px `muted`; tooltip "<ID>: <title>", click opens the issue), then
   "open" in `accent` when a space shows it, else how long since its last commit
   (`5m`, `3h`, `2d`, `1mo`), then a 13px editor icon, "rename" and "remove"
   (11px `dim`; remove turns `ansi1` on hover). Line two: the path with `~` for
@@ -49,6 +51,9 @@ with its pull request and CI, an open-in-editor button, rename and remove.
   or closed) with its checks. It's kept per repo for 60s in module scope, so
   reopening shows them at once. The CI dot follows the same rules as
   quick-links (`ci.js`).
+- Linear status: the branch's issue ID (`linear.js`, shared with quick-links),
+  one request for all rows, cached 60s in module scope. No API key: no chip,
+  asked again after 60s.
 - Typing filters the rows by branch and path. Enter or Create: names must match
   `^[A-Za-z0-9][A-Za-z0-9._-]*$`, not end in `.lock` and not contain `..`. An
   existing folder just opens. Otherwise it runs `git fetch origin master`

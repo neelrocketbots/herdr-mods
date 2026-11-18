@@ -9,7 +9,8 @@
 // filtered by what's typed in the name field). Clicking one goes to its space,
 // or opens a new space there with a terminal. Creating an issue whose folder
 // already exists does the same. Each row also shows its PR (state + CI dot,
-// click opens it), an open-in-editor button, and Remove (worktree + local branch + its
+// click opens it), its Linear issue's status when there's a Linear API key (see
+// linear.js; click opens the issue), an open-in-editor button, and Remove (worktree + local branch + its
 // space, after a confirm that warns about uncommitted changes), and Rename
 // (the branch; optionally the folder too). props.remove = a worktree path
 // opens straight on that row's Remove (the top bar's "merged · clean up").
@@ -23,6 +24,7 @@ import { v_flex, h_flex, InputState, Input, Scrollbar } from "gpui-base";
 import { exec, run, props, closeOverlay, theme, checking, focused, spaces, panes, home, notify, shared } from "herdr";
 import { ciSummary, CI_COLOR, CI_WORD } from "./ci.js";
 import { openInEditor, editorName } from "./editor.js";
+import { linearId, issueStatus, STATUS_COLOR } from "./linear.js";
 
 const BASE = { remote: "origin", branch: "master" };
 const LIST_MAX = 320; // px of worktree list before it scrolls
@@ -52,6 +54,9 @@ async function runningIn(path) {
 // only asks GitHub again after PR_TTL.
 const PR_CACHE = new Map(); // root -> { at, prs: { [branch]: pr | null } }
 const PR_TTL = 60_000;
+// Linear status per issue ID, the same way; no API key: {} (asked again after STATUS_TTL).
+const STATUS_CACHE = { at: 0, issues: {} };
+const STATUS_TTL = 60_000;
 
 // One GraphQL request for every branch's latest PR (open, merged or closed)
 // with its checks, instead of one `gh pr list` per worktree.
@@ -175,9 +180,14 @@ export default class IssueWorktree extends View {
     const root = this.repo.root;
     const list = await worktrees(root);
     const cached = PR_CACHE.get(root);
-    for (const c of list) c.pr = c.branch ? cached?.prs[c.branch] : undefined;
+    for (const c of list) {
+      c.pr = c.branch ? cached?.prs[c.branch] : undefined;
+      c.issue = c.branch ? linearId(c.branch) : null;
+      c.status = c.issue ? STATUS_CACHE.issues[c.issue] : undefined;
+    }
     this.list = list;
     cx.notify();
+    this.reloadStatus(cx, force);
     const branches = list.map((c) => c.branch).filter(Boolean);
     const stale = force || !cached || Date.now() - cached.at > PR_TTL || branches.some((b) => !(b in cached.prs));
     if (!stale) return;
@@ -186,6 +196,23 @@ export default class IssueWorktree extends View {
       PR_CACHE.set(root, { at: Date.now(), prs });
       for (const c of this.list) if (c.branch) c.pr = prs[c.branch];
     } catch {}
+    cx.notify();
+  }
+
+  // Every row's Linear issue status in one request (none without a Linear API key).
+  async reloadStatus(cx, force) {
+    const ids = [...new Set(this.list.map((c) => c.issue).filter(Boolean))];
+    if (!ids.length) return;
+    if (!force && Date.now() - STATUS_CACHE.at < STATUS_TTL && ids.every((id) => id in STATUS_CACHE.issues)) return;
+    if (!force && Date.now() - STATUS_CACHE.at < STATUS_TTL && STATUS_CACHE.out) return;
+    try {
+      STATUS_CACHE.issues = { ...STATUS_CACHE.issues, ...(await issueStatus(ids)) };
+      STATUS_CACHE.out = false;
+    } catch {
+      STATUS_CACHE.out = true; // no API key, or Linear unreachable
+    }
+    STATUS_CACHE.at = Date.now();
+    for (const c of this.list) if (c.issue) c.status = STATUS_CACHE.issues[c.issue];
     cx.notify();
   }
 
@@ -368,6 +395,12 @@ export default class IssueWorktree extends View {
             .on_click((_e, cx) => { cx.stop_propagation(); exec("open", [ci?.state === "failing" && ci.url ? ci.url : pr.url]).catch(() => {}); })
             .child(`#${pr.number} ${prWord}`)
             .when(Boolean(ci), (el) => el.child(div().size(6).rounded(3).bg(t[CI_COLOR[ci.state]])))))
+          .when(Boolean(c.status), (el) => el.child(h_flex().id(`iw-st-${i}`).flex_none().gap(4).items_center().px(5).py(1).rounded(5)
+            .text_size(11).text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.raised).text_color(t.foreground))
+            .tooltip(`${c.status.id}: ${c.status.title}${c.status.id !== c.issue ? ` (was ${c.issue})` : ""}`)
+            .on_click((_e, cx) => { cx.stop_propagation(); exec("open", [c.status.url]).catch(() => {}); })
+            .child(div().size(6).rounded(3).bg(c.status.color ?? t[STATUS_COLOR[c.status.type] ?? "muted"]))
+            .child(c.status.state)))
           .when(Boolean(there), (el) => el.child(div().flex_none().text_size(11).text_color(t.accent).child("open")))
           .when(!there && c.at > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(ago(c.at))))
           .child(action(`iw-editor-${i}`, svg("mods/issue-worktree/editor.svg").size(13), () => this.openEditor(c.path)).tooltip(`Open in ${shared("herdr-mods.editor") ?? this.editor}`))

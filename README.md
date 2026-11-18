@@ -77,19 +77,39 @@ Requires `git`, `jq`, and `gh` signed in (`gh auth status`).
 Changes apply within a few seconds. Other knobs are constants at the top of each
 `main.js` (see each unit's RECIPE.md).
 
+## Linear issue status (optional)
+
+With a Linear API key, the top bar's Linear button reads `WEB-140 · In Review`
+with the status's color, and each worktree row shows its issue's status.
+
+1. In Linear, **Settings → Account → Security & access → Personal API keys →
+   New key**, with read access only.
+2. Put it in your macOS Keychain (this prompts for it, so it stays out of your
+   shell history):
+
+   ```sh
+   security add-generic-password -a "$USER" -s herdr-mods-linear -w
+   ```
+
+The mods read the key in a shell on each request and hand it to `curl` on stdin,
+so it's never in a file, a command line or the mod. `$LINEAR_API_KEY` works too,
+if the app's environment has it. To remove it:
+`security delete-generic-password -s herdr-mods-linear`, then revoke it in Linear.
+
 ## What these mods run
 
 They're trusted code, like any Herdr mod, and run as you:
 
 | Mod | Programs | Network | Files outside its folder |
 | --- | --- | --- | --- |
-| quick-links | `git` (remote, branch, rev-parse), `gh pr view`, `gh search prs`, your editor, `open` | GitHub, through `gh` | reads `herdr-mods.json` and other mods' `mod.json` |
-| issue-worktree | `git` (fetch, worktree add/move/remove, branch -m/-D, status), `gh api graphql`, your editor | GitHub (`gh`), your git remote (`git fetch`) | appends `.worktrees/` to the repo's `.git/info/exclude` when it isn't ignored; reads `herdr-mods.json` |
+| quick-links | `git` (remote, branch, rev-parse), `gh pr view`, `gh search prs`, your editor, `open`; with a Linear key: `security`, `curl` | GitHub, through `gh`; Linear's API | reads `herdr-mods.json` and other mods' `mod.json`; reads the Linear key from the Keychain |
+| issue-worktree | `git` (fetch, worktree add/move/remove, branch -m/-D, status), `gh api graphql`, your editor; with a Linear key: `security`, `curl` | GitHub (`gh`), your git remote (`git fetch`), Linear's API | appends `.worktrees/` to the repo's `.git/info/exclude` when it isn't ignored; reads `herdr-mods.json`; reads the Linear key from the Keychain |
 | pr-inbox | `gh api graphql`, `open` | GitHub, through `gh` | none |
 | files-md | Herdr's own (`git`, file reads), your editor, `cp`/`curl`/`sips` for markdown images | remote images in markdown files (`curl`) | reads `herdr-mods.json`; caches images in `data/files-md/img` |
 | changes-editor | Herdr's own (`git`, file reads) plus your editor | none added | reads `herdr-mods.json` |
 
-Nothing is sent anywhere else, and no token is stored: `gh` uses its own login.
+Nothing is sent anywhere else. `gh` uses its own login; the Linear key, if you
+add one, stays in your Keychain.
 Removing a worktree runs `git branch -D` (after a confirm that warns about
 uncommitted changes).
 
@@ -113,7 +133,7 @@ sh scripts/pull.sh    # app -> units, units -> custom-herdr bundle; prints git s
 sh scripts/check.sh   # what CI runs: scripts parse, JSON valid, copies identical, recipes present
 ```
 
-`editor.js` (4 copies) and `ci.js` (2 copies) must stay identical: mods can't
+`editor.js` (4 copies), `ci.js` and `linear.js` (2 copies each) must stay identical: mods can't
 import from each other's folders. Regenerate the images with
 `sh docs/mockups/render.sh` (headless Chrome): each unit's `screenshot.png` and
 `preview.png`.
