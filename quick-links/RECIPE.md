@@ -78,8 +78,9 @@ folder, git remote and branch, and changes as you move between terminals.
   owner. `editor` names the editor. Linear status comes from `linear.js` (shared
   with issue-worktree): a shell reads the API key (Keychain service
   `herdr-mods-linear`, else `$LINEAR_API_KEY`) and pipes it to `curl -H @-`;
-  one GraphQL `issues` query by team key + number, then `issue(id:)` for IDs
-  not found that way (moved issues answer to old IDs). Status is cached 2 min;
+  one GraphQL request with an aliased `issue(id:)` per ID (moved issues answer
+  to old IDs). A missing ID nulls Linear's whole answer, so IDs named in the
+  errors are marked not found and the rest asked again. Status is cached 2 min;
   with no key (or a refused one), Linear is asked again after 5 min. The editor's name is published once per
   change as `shared("herdr-mods.editor")`. Invalid JSON gives one error toast
   until it's fixed.
