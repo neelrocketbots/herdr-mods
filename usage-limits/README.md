@@ -9,7 +9,9 @@ It works on its own, with nothing from your status line.
 ## What it does
 
 - **A row per account**: one per Claude Code config folder with a login, named
-  by its current plan ("Claude Team", "Claude Ultra"), and Codex. Two folders on the
+  by its current plan ("Claude Team", "Claude Ultra"), its icon a white Claude
+  glyph on a tile in the plan's color (Ultra violet, Team blue, Max amber,
+  Enterprise teal, Pro Claude orange), and Codex. Two folders on the
   same plan: the second shows its folder too ("Claude Max · 2").
 - **Gauges across the row**: `5h`, `7d`, and a model's own weekly limit (`fbl`
   for Fable), each with a bar, the % (green, yellow from 50%, red from 80%) and

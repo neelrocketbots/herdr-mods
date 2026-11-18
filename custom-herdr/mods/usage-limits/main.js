@@ -96,6 +96,12 @@ function claudeLimits(json) {
   return limits;
 }
 
+// A Claude row's icon: the white Claude glyph on a tile in its plan's color.
+// Pro and unknown plans: Claude's orange.
+const PLAN_TILE = { ultra: "#8b5cf6", team: "#3b82f6", max: "#d97706", enterprise: "#0d9488" };
+const CLAUDE_ORANGE = "#d97757";
+const planKey = (plan) => (plan ?? "").replace(/^claude_/, "").toLowerCase();
+
 // "Ultra" -> "Claude Ultra", "claude_team" -> "Claude Team"; none -> "Claude".
 function planName(plan) {
   const p = (plan ?? "").replace(/^claude_/, "").replace(/_/g, " ").trim();
@@ -212,10 +218,16 @@ export default class UsageLimits extends View {
     const now = Date.now();
     const live = (l) => (l.resets && l.resets <= now ? { ...l, pct: 0 } : l);
     const ago = (at) => { const m = Math.round((now - at) / 60_000); return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`; };
-    const glyph = (key) => {
-      const p = this.icons[key];
-      if (!p?.icon) return div().size(14).flex_none();
-      return p.tint ? svg(p.icon).size(14).flex_none().text_color(p.color ?? t.muted) : image(p.icon).w(14).h(14).flex_none();
+    // 16px: a Claude row's plan tile, else the program's own icon.
+    const glyph = (s) => {
+      const p = this.icons[s.icon];
+      const box = h_flex().size(16).flex_none().items_center().justify_center();
+      if (!p?.icon) return box;
+      if (s.icon === "claude") {
+        return box.rounded(4).bg(PLAN_TILE[planKey(s.plan)] ?? CLAUDE_ORANGE)
+          .child(svg(p.icon).size(11).text_color("#ffffff"));
+      }
+      return box.child(p.tint ? svg(p.icon).size(14).text_color(p.color ?? t.muted) : image(p.icon).w(14).h(14));
     };
     // Claude accounts first (~/.claude, then the other folders), then Codex.
     // Two accounts on the same plan: the second gets its folder, "Claude Max · 2".
@@ -238,11 +250,11 @@ export default class UsageLimits extends View {
       const bars = h_flex().w_full().gap(10).children(limits.map((l, i) => gauge(l, `usage-${id}-${i}`)));
       if (this.collapsed) {
         return h_flex().id(`usage-${id}`).flex_none().h(20).px(8).gap(8).items_center().rounded(7).hover((st) => st.bg(t.hover)).tooltip(tip)
-          .child(glyph(s.icon)).child(div().flex_1().min_w(0).child(bars));
+          .child(glyph(s)).child(div().flex_1().min_w(0).child(bars));
       }
       return v_flex().id(`usage-${id}`).flex_none().px(8).py(4).gap(3).rounded(7).hover((st) => st.bg(t.hover)).tooltip(tip)
         .child(h_flex().gap(8).items_center()
-          .child(glyph(s.icon))
+          .child(glyph(s))
           .child(div().flex_1().min_w(0).truncate().text_size(12.5).text_color(t.foreground).child(s.name)))
         .child(bars);
     };

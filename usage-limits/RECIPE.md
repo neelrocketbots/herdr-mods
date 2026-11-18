@@ -14,8 +14,11 @@ shown as a small gauge with its reset time, like a Claude Code status line.
 - Collapsed: a 20px line per account, its icon then its bars only (no names,
   % or countdowns), same widths and colors, same tooltip.
 - A row per account, 4px by 8px padding, 7px corners, `hover` background:
-  - Line one: the program's icon (14px, from Herdr's program table) and the
-    name in 12.5px `foreground`. Claude rows are named by the account's current
+  - Line one: a 16px icon and the name in 12.5px `foreground`. Claude rows: a
+    tile with 4px corners in the plan's color (`ultra` #8b5cf6, `team`
+    #3b82f6, `max` #d97706, `enterprise` #0d9488, else Claude's #d97757)
+    holding the program table's Claude icon at 11px, drawn white with `svg()`.
+    Codex: its own icon (14px) from Herdr's program table. Claude rows are named by the account's current
     plan from Anthropic's profile endpoint: `organization.plan_display_name`
     ("Ultra": "Claude Ultra"), else `organization.organization_type` without
     `claude_` ("claude_team": "Claude Team"); none yet: "Claude". (The
