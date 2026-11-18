@@ -7,21 +7,23 @@
   .g > .tr { flex: 1; min-width: 12px; } .tr { height: 3px; border-radius: 2px; background: var(--input); overflow: hidden; display: inline-flex; }
   .tr span { height: 100%; border-radius: 2px; }
   svg.s { width: 14px; height: 14px; flex: none; }
+  .kbdx { flex: none; height: 14px; padding: 0 3px; display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 3px; font-size: 9.5px; color: var(--dim); }
+  .agent { white-space: nowrap; }
 </style></head>
 <body>
 <div class="window">
   <div class="sidebar col">
     <div class="lights row"><i></i><i></i><i></i></div>
     <div class="label">Spaces</div>
-    <div class="space row"><span class="badge" style="background:#e0a85a">W</span>web-app</div>
-    <div class="space row sub on"><i data-i="worktree" style="color:var(--dim)"></i>WEB-128<span class="branch dim">WEB-128</span></div>
-    <div class="space row sub"><i data-i="worktree" style="color:var(--dim)"></i>WEB-131<span class="branch dim">WEB-131</span></div>
-    <div class="space row"><span class="badge" style="background:#6fbf73">A</span>api</div>
-    <div class="space row"><span class="badge" style="background:#8fb3e8">D</span>docs</div>
+    <div class="space row"><span class="badge" style="background:#e0a85a">W</span>web-app<span class="kbdx" style="margin-left:auto">⌃1</span></div>
+    <div class="space row sub on"><i data-i="worktree" style="color:var(--dim)"></i>WEB-128<span class="branch dim">WEB-128</span><span class="kbdx" style="margin-left:8px">⌃2</span></div>
+    <div class="space row sub"><i data-i="worktree" style="color:var(--dim)"></i>WEB-131<span class="branch dim">WEB-131</span><span class="kbdx" style="margin-left:8px">⌃3</span></div>
+    <div class="space row"><span class="badge" style="background:#6fbf73">A</span>api<span class="kbdx" style="margin-left:auto">⌃4</span></div>
+    <div class="space row"><span class="badge" style="background:#8fb3e8">D</span>docs<span class="kbdx" style="margin-left:auto">⌃5</span></div>
     <div class="label" style="margin-top:18px">Agents</div>
     <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>WEB-128<span class="dim trunc">· invoice export</span><span class="ago">2m</span></div>
-    <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>WEB-131<span class="dim trunc">· chart tooltips</span><span class="ago">9m</span></div>
-    <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>api<span class="dim trunc">· rate limits</span><span class="ago">31m</span></div>
+    <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>WEB-131<span class="dim trunc">· chart tooltips</span><span class="ago">9m</span><span class="kbdx" style="margin-left:6px">⌘]</span></div>
+    <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>api<span class="dim trunc">· rate limits</span><span class="ago">31m</span><span class="kbdx" style="margin-left:6px">⌘[</span></div>
     <div class="grow"></div>
     <div class="col" style="border-top:1px solid var(--border);padding-top:6px;gap:2px">
       <div class="label" style="padding:2px 8px 4px">Usage</div>

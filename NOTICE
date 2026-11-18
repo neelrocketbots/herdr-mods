@@ -1,14 +1,18 @@
 herdr-mods
 
-files-md/mods/files-md and changes-editor/mods/changes-editor (and their copies
-in custom-herdr/mods) are modified copies of the `files` and `changes` mods
-shipped with the Herdr app (https://herdr.dev), which are licensed under the
+files-md/mods/files-md, changes-editor/mods/changes-editor,
+spaces-keys/mods/spaces-keys and agents-keys/mods/agents-keys (and their copies
+in custom-herdr/mods) are modified copies of the `files`, `changes`, `spaces`
+and `agents` mods shipped with the Herdr app (https://herdr.dev), which are licensed under the
 Apache License, Version 2.0. Changes:
 
 - files-md: renders markdown files (Preview / Source toggle) and adds an
   "Open in <editor>" button for the shown file.
 - changes-editor: adds an "Open in <editor>" button for the selected changed
   file.
+- spaces-keys: shows the key bound to `space.select:<n>` on each space's row.
+- agents-keys: shows the `agent.next` / `agent.prev` keys on the rows they
+  reach from the focused agent.
 
 custom-herdr/layouts/custom-herdr.json is a modified copy of the Herdr app's
 `main` layout.

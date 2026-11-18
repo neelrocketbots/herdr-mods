@@ -17,9 +17,11 @@ shot "file://$here/worktree.html" "$repo/issue-worktree/screenshot.png" 568 600
 shot "file://$here/prinbox.html" "$repo/pr-inbox/screenshot.png" 440 510
 shot "file://$here/files.html" "$repo/files-md/screenshot.png" 488 524
 shot "file://$here/changes.html" "$repo/changes-editor/screenshot.png" 460 510
+shot "file://$here/spaces.html" "$repo/spaces-keys/screenshot.png" 310 230
+shot "file://$here/agents.html" "$repo/agents-keys/screenshot.png" 310 270
 shot "file://$here/usage.html" "$repo/usage-limits/screenshot.png" 310 215
 shot "file://$here/overview.html" "$repo/custom-herdr/screenshot.png" 1400 820
 # Each unit's preview.png: the marketplace card.
-for unit in quick-links issue-worktree pr-inbox files-md changes-editor usage-limits custom-herdr; do
+for unit in quick-links issue-worktree pr-inbox files-md changes-editor usage-limits spaces-keys agents-keys custom-herdr; do
 	shot "file://$here/card.html?unit=$unit" "$repo/$unit/preview.png" 1600 800
 done

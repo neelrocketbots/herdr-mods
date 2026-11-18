@@ -25,6 +25,8 @@ and a screenshot. Take one or all.
 | [`pr-inbox`](pr-inbox) | PRs waiting on your review and your own, across repos. A side panel in `custom-herdr`, a dialog (⌘⌥P) anywhere else |
 | [`files-md`](files-md) | Herdr's Files panel, plus rendered markdown (images included) and open in your editor |
 | [`changes-editor`](changes-editor) | Herdr's Changes panel, plus open in your editor |
+| [`spaces-keys`](spaces-keys) | Herdr's Spaces list, plus the key that selects each space (`⌃1`…`⌃9`) |
+| [`agents-keys`](agents-keys) | Herdr's Agents list, plus the next / previous agent keys (`⌘]`, `⌘[`) on the rows they reach |
 | [`usage-limits`](usage-limits) | Sidebar: Claude (each account) and Codex rate limits as status-line style gauges with reset times |
 | [`custom-herdr`](custom-herdr) | Layout: Herdr's main layout with all of the above wired in (bundles its own copies of the mods) |
 
@@ -109,6 +111,7 @@ They're trusted code, like any Herdr mod, and run as you:
 | pr-inbox | `gh api graphql`, `open` | GitHub, through `gh` | none |
 | files-md | Herdr's own (`git`, file reads), your editor, `cp`/`curl`/`sips` for markdown images | remote images in markdown files (`curl`) | reads `herdr-mods.json`; caches images in `data/files-md/img` |
 | changes-editor | Herdr's own (`git`, file reads) plus your editor | none added | reads `herdr-mods.json` |
+| spaces-keys, agents-keys | Herdr's own (the `spaces` / `agents` mods they copy) | none added | reads `keys.json` through Herdr |
 | usage-limits | `security`, `plutil`, `shasum`, `curl`; `find`, `grep`, `stat` | Anthropic's usage endpoint, with each Claude Code login's token | reads Claude Code's Keychain logins (token piped to `curl`, never stored) and `~/.codex/sessions` |
 
 Nothing is sent anywhere else. `gh` uses its own login; the Linear key, if you
@@ -144,5 +147,5 @@ import from each other's folders. Regenerate the images with
 
 ## License
 
-Apache-2.0. `files-md` and `changes-editor` are modified copies of mods shipped
-with Herdr (Apache-2.0); see [NOTICE](NOTICE).
+Apache-2.0. `files-md`, `changes-editor`, `spaces-keys` and `agents-keys` are
+modified copies of mods shipped with Herdr (Apache-2.0); see [NOTICE](NOTICE).
