@@ -8,7 +8,11 @@ shown as a small gauge with its reset time, like a Claude Code status line.
 ## What you see
 
 - A block on `chrome` with a 1px `border` line on top, 10px side padding.
-  "Usage" in 11px `dim`.
+  "Usage" in 11px `dim` with a chevron on the right (▾ expanded, ▸ collapsed;
+  `foreground` on hover). Clicking that line toggles; the state is kept in
+  localStorage (`usage-limits.collapsed`).
+- Collapsed: a 20px line per account, its icon then its bars only (no names,
+  % or countdowns), same widths and colors, same tooltip.
 - A row per account, 4px by 8px padding, 7px corners, `hover` background:
   - Line one: the program's icon (14px, from Herdr's program table) and the
     name in 12.5px `foreground`: "Claude" for `~/.claude`, "Claude 2" for
@@ -27,7 +31,7 @@ shown as a small gauge with its reset time, like a Claude Code status line.
 
 ## How it behaves
 
-- Claude, every 5 minutes: `sh` lists `~/.claude` and `~/.claude?*` folders.
+- Claude and Codex, every 5 minutes. Claude: `sh` lists `~/.claude` and `~/.claude?*` folders.
   For each, a shell finds the Keychain item `Claude Code-credentials` (plus
   `-<first 8 hex of sha256(folder path)>` for any folder but `~/.claude`), pulls
   `claudeAiOauth.accessToken` and `expiresAt` with `plutil`, skips an expired
@@ -36,7 +40,7 @@ shown as a small gauge with its reset time, like a Claude Code status line.
   only the JSON and the HTTP status. `limits[]` maps: `session` to 5h,
   `weekly_all` to 7d, `weekly_scoped` to its `scope.model.display_name`. A 429
   waits 15 minutes; other failures keep the last answer.
-- Codex, every 30 seconds: the 5 newest `.jsonl` files from the last 8 days in
+- Codex: the 5 newest `.jsonl` files from the last 8 days in
   `~/.codex/sessions`, the last line with `"rate_limits":{` in the newest that
   has one, parsed only when that file changed. `primary` / `secondary` windows
   map by `window_minutes` (300 to 5h, 10080 to 7d).

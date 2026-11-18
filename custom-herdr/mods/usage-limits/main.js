@@ -2,7 +2,8 @@
 // and Codex: its name, then every limit as a small gauge, like a status line:
 // `5h ━── 8% 4h   7d ━── 5% 6d   fbl ── 0%` (green, yellow from 50%, red from
 // 80%; a model's weekly limit drops its reset when it matches 7d's). The
-// tooltip has the full names and reset times. The layout block holding this mod (props.block, default "usage")
+// tooltip has the full names and reset times. The chevron by "Usage" collapses
+// it to just the bars, a line per account (remembered). The layout block holding this mod (props.block, default "usage")
 // resizes to fit. Standalone: it needs nothing from your status line.
 //
 //   Claude  every ~/.claude* folder that has a Claude Code login in the macOS
@@ -10,11 +11,12 @@
 //           for folders other than ~/.claude, as Claude Code names them). A
 //           shell reads that login's access token and pipes it to curl, which
 //           asks Anthropic's usage endpoint (/api/oauth/usage, undocumented),
-//           so the token never reaches the mod, a file or a command line. Asked
-//           every CLAUDE_MS; an expired token (Claude Code renews it while it
+//           so the token never reaches the mod, a file or a command line. An
+//           expired token (Claude Code renews it while it
 //           runs) or an error keeps the last answer.
 //   Codex   the last `rate_limits` (primary / secondary windows) in its newest
 //           session file under ~/.codex/sessions that has one.
+// Both are checked every POLL_MS.
 // An account without data has no row. A limit past its reset time shows 0%.
 // Last answers are kept in localStorage, so rows show at once after a restart.
 import { View, div, svg, image } from "gpui-kit";
@@ -22,10 +24,10 @@ import { h_flex, v_flex } from "gpui-base";
 import { exec, home, theme, run, props, checking, knownAgents } from "herdr";
 
 const CODEX_DIR = ".codex/sessions"; // under home
-const CODEX_MS = 30_000;
-const CLAUDE_MS = 5 * 60_000;
+const POLL_MS = 5 * 60_000;
 const BACKOFF_MS = 15 * 60_000;      // after Anthropic says 429
 const CACHE_KEY = "usage-limits.v2"; // localStorage: last answers
+const COLLAPSED_KEY = "usage-limits.collapsed"; // localStorage: "1" when collapsed
 
 const pctColor = (p) => (p >= 80 ? "ansi1" : p >= 50 ? "ansi3" : "ansi2");
 
@@ -113,6 +115,8 @@ export default class UsageLimits extends View {
     this.waitUntil = {}; // Claude folder -> no request before this time (429)
     this.icons = {};    // "claude" / "codex" -> program (icon, tint, color)
     this.px = 0;
+    this.collapsed = false;
+    try { this.collapsed = localStorage.getItem(COLLAPSED_KEY) === "1"; } catch {}
     try { this.rows = JSON.parse(localStorage.getItem(CACHE_KEY) ?? "{}") ?? {}; } catch {}
     if (checking()) return;
     cx.spawn(async (cx) => {
@@ -121,8 +125,7 @@ export default class UsageLimits extends View {
     });
     this.pollClaude(cx);
     this.pollCodex(cx);
-    cx.timer.every(CLAUDE_MS, (cx) => this.pollClaude(cx));
-    cx.timer.every(CODEX_MS, (cx) => this.pollCodex(cx));
+    cx.timer.every(POLL_MS, (cx) => { this.pollClaude(cx); this.pollCodex(cx); });
     cx.timer.every(60_000, (cx) => cx.notify()); // countdowns
   }
 
@@ -170,6 +173,12 @@ export default class UsageLimits extends View {
     });
   }
 
+  toggle(cx) {
+    this.collapsed = !this.collapsed;
+    try { localStorage.setItem(COLLAPSED_KEY, this.collapsed ? "1" : "0"); } catch {}
+    cx.notify();
+  }
+
   fit(height) {
     const px = Math.ceil(height);
     if (px <= 0 || px === this.px) return;
@@ -190,29 +199,39 @@ export default class UsageLimits extends View {
     // Claude accounts first (~/.claude, then the others by name), then Codex.
     const rows = Object.values(this.rows).filter((s) => s.limits?.length)
       .sort((a, b) => (a.icon === b.icon ? a.name.localeCompare(b.name) : a.icon === "claude" ? -1 : 1));
-    // `5h ━── 8% 4h`: label, a bar sharing the row's width, the %, the countdown.
+    // `5h ━── 8% 4h`: label, a bar sharing the row's width, the %, the
+    // countdown. Collapsed: the bar alone.
     const gauge = (l, id) => h_flex().flex_1().min_w(0).gap(4).items_center().text_size(11)
-      .child(div().flex_none().text_color(t.dim).child(l.short))
+      .when(!this.collapsed, (el) => el.child(div().flex_none().text_color(t.dim).child(l.short)))
       .child(div().id(id).flex_1().min_w(12).h(3).rounded(2).bg(t.input)
         .child(div().h_full().rounded(2).w(`${Math.max(0, Math.min(100, l.pct))}%`).bg(t[pctColor(l.pct)])))
-      .child(div().flex_none().text_color(t[pctColor(l.pct)]).child(`${Math.round(l.pct)}%`))
-      .when(Boolean(l.resets) && !l.sameReset, (el) => el.child(div().flex_none().text_color(t.dim).child(short(l.resets))));
+      .when(!this.collapsed, (el) => el.child(div().flex_none().text_color(t[pctColor(l.pct)]).child(`${Math.round(l.pct)}%`)))
+      .when(!this.collapsed && Boolean(l.resets) && !l.sameReset, (el) => el.child(div().flex_none().text_color(t.dim).child(short(l.resets))));
     const row = (s) => {
       const limits = s.limits.map(live);
       const id = s.key.replace(/[^A-Za-z0-9]/g, "-");
       const tip = [`${s.name} (${s.tip}), as of ${ago(s.at)}`,
         ...limits.map((l) => `${l.label}: ${Math.round(l.pct)}%${l.resets ? `, resets in ${until(l.resets)}` : ""}`)].join("\n");
+      const bars = h_flex().w_full().gap(10).children(limits.map((l, i) => gauge(l, `usage-${id}-${i}`)));
+      if (this.collapsed) {
+        return h_flex().id(`usage-${id}`).flex_none().h(20).px(8).gap(8).items_center().rounded(7).hover((st) => st.bg(t.hover)).tooltip(tip)
+          .child(glyph(s.icon)).child(div().flex_1().min_w(0).child(bars));
+      }
       return v_flex().id(`usage-${id}`).flex_none().px(8).py(4).gap(3).rounded(7).hover((st) => st.bg(t.hover)).tooltip(tip)
         .child(h_flex().gap(8).items_center()
           .child(glyph(s.icon))
           .child(div().flex_1().min_w(0).truncate().text_size(12.5).text_color(t.foreground).child(s.name)))
-        .child(h_flex().w_full().gap(10)
-          .children(limits.map((l, i) => gauge(l, `usage-${id}-${i}`))));
+        .child(bars);
     };
     return v_flex().id("usage-limits").w_full().bg(t.chrome).text_color(t.foreground)
       .child(v_flex().id("usage-content").w_full().px(10).pt(6).pb(6).gap(2).border_t(1).border_color(t.border)
         .on_size_change((size) => this.fit(size.height))
-        .child(div().px(8).pt(2).pb(4).text_size(11).text_color(t.dim).child("Usage"))
+        .child(h_flex().id("usage-toggle").px(8).pt(2).pb(4).gap(4).items_center().cursor_pointer().text_size(11).text_color(t.dim)
+          .hover((st) => st.text_color(t.foreground))
+          .tooltip(this.collapsed ? "Show the numbers" : "Just the bars")
+          .on_click((_e, cx) => this.toggle(cx))
+          .child(div().flex_1().child("Usage"))
+          .child(div().flex_none().child(this.collapsed ? "▸" : "▾")))
         .when(rows.length === 0, (el) => el.child(div().px(8).pb(4).text_size(11.5).text_color(t.dim)
           .child("No usage yet: sign in to Claude Code or Codex")))
         .children(rows.map(row)));

@@ -14,8 +14,10 @@ It works on its own, with nothing from your status line.
   for Fable), each with a bar, the % (green, yellow from 50%, red from 80%) and
   the time to reset (`47m`, `3h`, `5d`). The tooltip has the full names and
   times, and how old the numbers are.
-- Claude is asked every 5 minutes; Codex's files are checked every 30 seconds.
-  The last numbers are kept on disk, so rows show at once after a restart.
+- **Collapse**: the chevron by "Usage" folds it to just the bars, one line per
+  account. It remembers which.
+- Both are checked every 5 minutes (Codex's numbers change only while Codex
+  works). The last numbers are kept on disk, so rows show at once after a restart.
 
 ## Install
 
