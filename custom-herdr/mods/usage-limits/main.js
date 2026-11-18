@@ -26,6 +26,7 @@ import { exec, home, theme, run, props, checking, knownAgents } from "herdr";
 const CODEX_DIR = ".codex/sessions"; // under home
 const POLL_MS = 5 * 60_000;
 const BACKOFF_MS = 15 * 60_000;      // after Anthropic says 429
+const PLAN_MS = 60 * 60_000;         // ask for each Claude login's plan this often
 const CACHE_KEY = "usage-limits.v2"; // localStorage: last answers
 const COLLAPSED_KEY = "usage-limits.collapsed"; // localStorage: "1" when collapsed
 
@@ -58,14 +59,25 @@ const abbrev = (name) => { const w = name.toLowerCase().replace(/[^a-z]/g, ""); 
 // Claude Code config folders: ~/.claude and ~/.claude<anything> folders.
 const CLAUDE_DIRS = `for d in "$HOME"/.claude "$HOME"/.claude?*; do [ -d "$d" ] && printf '%s\\n' "$d"; done`;
 
-// sh -c CLAUDE_USAGE sh <config folder>. Prints the usage JSON, then the HTTP
-// status on its own last line. Exit 3: no login there; 4: its token expired.
+// sh -c CLAUDE_USAGE sh <config folder> <1: ask for the plan too>. Prints the
+// plan (the profile's organization.plan_display_name, e.g. "Ultra", else its
+// organization_type, e.g. "claude_team"; empty when not asked), the usage
+// JSON, then the HTTP status on its own last line. Only the plan leaves the
+// shell, not the profile (it holds your email and name). Exit 3: no login
+// there; 4: its token expired.
 const CLAUDE_USAGE = `svc="Claude Code-credentials"
 [ "$1" = "$HOME/.claude" ] || svc="$svc-$(printf %s "$1" | shasum -a 256 | cut -c1-8)"
 c=$(security find-generic-password -s "$svc" -w 2>/dev/null) || exit 3
 t=$(printf %s "$c" | plutil -extract claudeAiOauth.accessToken raw -o - - 2>/dev/null) || exit 3
 e=$(printf %s "$c" | plutil -extract claudeAiOauth.expiresAt raw -o - - 2>/dev/null)
 [ -n "$e" ] && [ $(( e / 1000 )) -lt "$(date +%s)" ] && exit 4
+p=""
+if [ "$2" = 1 ]; then
+  prof=$(printf 'Authorization: Bearer %s\n' "$t" | curl -sS --max-time 10 -H @- -H 'anthropic-beta: oauth-2025-04-20' https://api.anthropic.com/api/oauth/profile)
+  p=$(printf %s "$prof" | plutil -extract organization.plan_display_name raw -o - - 2>/dev/null) || p=""
+  [ -n "$p" ] || p=$(printf %s "$prof" | plutil -extract organization.organization_type raw -o - - 2>/dev/null) || p=""
+fi
+printf '%s\n' "$p" | tr -d '\t'
 printf 'Authorization: Bearer %s\\n' "$t" | curl -sS --max-time 10 -H @- -H 'anthropic-beta: oauth-2025-04-20' -w '\\n%{http_code}' https://api.anthropic.com/api/oauth/usage`;
 
 // Claude: limits [{ kind, percent, resets_at, scope }] -> limits.
@@ -84,8 +96,19 @@ function claudeLimits(json) {
   return limits;
 }
 
-// ".claude" -> "Claude", ".claude2" -> "Claude 2", ".claude-work" -> "Claude work".
-const claudeName = (dir) => `Claude ${dir.split("/").pop().replace(/^\.claude[-_.]?/, "")}`.trim();
+// A Claude row's icon: the white Claude glyph on a tile in its plan's color.
+// Pro and unknown plans: Claude's orange.
+const PLAN_TILE = { ultra: "#8b5cf6", team: "#3b82f6", max: "#d97706", enterprise: "#0d9488" };
+const CLAUDE_ORANGE = "#d97757";
+const planKey = (plan) => (plan ?? "").replace(/^claude_/, "").toLowerCase();
+
+// "Ultra" -> "Claude Ultra", "claude_team" -> "Claude Team"; none -> "Claude".
+function planName(plan) {
+  const p = (plan ?? "").replace(/^claude_/, "").replace(/_/g, " ").trim();
+  return p ? `Claude ${p[0].toUpperCase()}${p.slice(1)}` : "Claude";
+}
+// ".claude2" -> "2", ".claude-work" -> "work", ".claude" -> "".
+const folderTag = (dir) => dir.split("/").pop().replace(/^\.claude[-_.]?/, "");
 
 // Codex: { primary, secondary: { used_percent, window_minutes, resets_at (s) } } -> limits.
 function codexLimits(rl) {
@@ -142,15 +165,19 @@ export default class UsageLimits extends View {
       const dirs = (r?.stdout ?? "").split("\n").filter(Boolean);
       await Promise.all(dirs.map(async (dir) => {
         if (Date.now() < (this.waitUntil[dir] ?? 0)) return;
-        const u = await exec("sh", ["-c", CLAUDE_USAGE, "sh", dir], { timeout: 20_000 }).catch(() => null);
+        const old = this.rows[`claude:${dir}`];
+        const askPlan = !old?.plan || Date.now() - (old.planAt ?? 0) > PLAN_MS;
+        const u = await exec("sh", ["-c", CLAUDE_USAGE, "sh", dir, askPlan ? "1" : "0"], { timeout: 30_000 }).catch(() => null);
         if (!u || u.code !== 0) return; // no login there, expired token, or offline: keep the last answer
-        const nl = u.stdout.lastIndexOf("\n");
+        const first = u.stdout.indexOf("\n"), nl = u.stdout.lastIndexOf("\n");
+        const asked = u.stdout.slice(0, first).trim();
+        const plan = asked || old?.plan || "", planAt = asked ? Date.now() : old?.planAt ?? 0;
         const status = Number(u.stdout.slice(nl + 1));
         if (status === 429) { this.waitUntil[dir] = Date.now() + BACKOFF_MS; return; }
         if (status !== 200) return;
         try {
-          const limits = claudeLimits(JSON.parse(u.stdout.slice(0, nl)));
-          if (limits.length) this.set({ key: `claude:${dir}`, name: claudeName(dir), tip: dir.replace(home(), "~"), icon: "claude", limits, at: Date.now() }, cx);
+          const limits = claudeLimits(JSON.parse(u.stdout.slice(first + 1, nl)));
+          if (limits.length) this.set({ key: `claude:${dir}`, name: planName(plan), plan, planAt, tag: folderTag(dir), tip: dir.replace(home(), "~"), icon: "claude", limits, at: Date.now() }, cx);
         } catch {}
       }));
     });
@@ -191,14 +218,22 @@ export default class UsageLimits extends View {
     const now = Date.now();
     const live = (l) => (l.resets && l.resets <= now ? { ...l, pct: 0 } : l);
     const ago = (at) => { const m = Math.round((now - at) / 60_000); return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`; };
-    const glyph = (key) => {
-      const p = this.icons[key];
-      if (!p?.icon) return div().size(14).flex_none();
-      return p.tint ? svg(p.icon).size(14).flex_none().text_color(p.color ?? t.muted) : image(p.icon).w(14).h(14).flex_none();
+    // 16px: a Claude row's plan tile, else the program's own icon.
+    const glyph = (s) => {
+      const p = this.icons[s.icon];
+      const box = h_flex().size(16).flex_none().items_center().justify_center();
+      if (!p?.icon) return box;
+      if (s.icon === "claude") {
+        return box.rounded(4).bg(PLAN_TILE[planKey(s.plan)] ?? CLAUDE_ORANGE)
+          .child(svg(p.icon).size(11).text_color("#ffffff"));
+      }
+      return box.child(p.tint ? svg(p.icon).size(14).text_color(p.color ?? t.muted) : image(p.icon).w(14).h(14));
     };
-    // Claude accounts first (~/.claude, then the others by name), then Codex.
+    // Claude accounts first (~/.claude, then the other folders), then Codex.
+    // Two accounts on the same plan: the second gets its folder, "Claude Max · 2".
     const rows = Object.values(this.rows).filter((s) => s.limits?.length)
-      .sort((a, b) => (a.icon === b.icon ? a.name.localeCompare(b.name) : a.icon === "claude" ? -1 : 1));
+      .sort((a, b) => (a.icon === b.icon ? a.key.localeCompare(b.key) : a.icon === "claude" ? -1 : 1))
+      .map((s, i, all) => (s.tag && all.some((o) => o !== s && o.name === s.name) ? { ...s, name: `${s.name} · ${s.tag}` } : s));
     // `5h ━── 8% 4h`: label, a bar sharing the row's width, the %, the
     // countdown. Collapsed: the bar alone.
     const gauge = (l, id) => h_flex().flex_1().min_w(0).gap(4).items_center().text_size(11)
@@ -215,11 +250,11 @@ export default class UsageLimits extends View {
       const bars = h_flex().w_full().gap(10).children(limits.map((l, i) => gauge(l, `usage-${id}-${i}`)));
       if (this.collapsed) {
         return h_flex().id(`usage-${id}`).flex_none().h(20).px(8).gap(8).items_center().rounded(7).hover((st) => st.bg(t.hover)).tooltip(tip)
-          .child(glyph(s.icon)).child(div().flex_1().min_w(0).child(bars));
+          .child(glyph(s)).child(div().flex_1().min_w(0).child(bars));
       }
       return v_flex().id(`usage-${id}`).flex_none().px(8).py(4).gap(3).rounded(7).hover((st) => st.bg(t.hover)).tooltip(tip)
         .child(h_flex().gap(8).items_center()
-          .child(glyph(s.icon))
+          .child(glyph(s))
           .child(div().flex_1().min_w(0).truncate().text_size(12.5).text_color(t.foreground).child(s.name)))
         .child(bars);
     };
