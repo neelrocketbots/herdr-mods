@@ -15,8 +15,11 @@ shown as a small gauge with its reset time, like a Claude Code status line.
   % or countdowns), same widths and colors, same tooltip.
 - A row per account, 4px by 8px padding, 7px corners, `hover` background:
   - Line one: the program's icon (14px, from Herdr's program table) and the
-    name in 12.5px `foreground`: "Claude" for `~/.claude`, "Claude 2" for
-    `~/.claude2`, "Claude work" for `~/.claude-work`, then "Codex".
+    name in 12.5px `foreground`. Claude rows are named by the login's plan
+    (`claudeAiOauth.subscriptionType`, capitalized: "Claude Team"), plus the
+    multiplier when `rateLimitTier` is the plan's own (`default_claude_max_20x`
+    on `max`: "Claude Max 20x"); no plan: "Claude". Two rows with the same name:
+    the later folder's gets " · <folder suffix>" ("Claude Max · 2"). Then "Codex".
   - Line two, full width: a gauge per limit, sharing the width equally, 10px
     apart, 11px text: the short name in `dim` (`5h`, `7d`, a model's weekly
     limit as 3 letters: `fbl` for Fable, `ops` for Opus), a 3px bar on `input`
@@ -34,8 +37,9 @@ shown as a small gauge with its reset time, like a Claude Code status line.
 - Claude and Codex, every 5 minutes. Claude: `sh` lists `~/.claude` and `~/.claude?*` folders.
   For each, a shell finds the Keychain item `Claude Code-credentials` (plus
   `-<first 8 hex of sha256(folder path)>` for any folder but `~/.claude`), pulls
-  `claudeAiOauth.accessToken` and `expiresAt` with `plutil`, skips an expired
-  token, and pipes `Authorization: Bearer <token>` to `curl -H @-` with
+  `claudeAiOauth.accessToken`, `expiresAt`, `subscriptionType` and
+  `rateLimitTier` with `plutil`, skips an expired token, prints the plan and
+  tier (not the token), and pipes `Authorization: Bearer <token>` to `curl -H @-` with
   `anthropic-beta: oauth-2025-04-20` for `GET /api/oauth/usage`. The mod gets
   only the JSON and the HTTP status. `limits[]` maps: `session` to 5h,
   `weekly_all` to 7d, `weekly_scoped` to its `scope.model.display_name`. A 429

@@ -58,14 +58,16 @@ const abbrev = (name) => { const w = name.toLowerCase().replace(/[^a-z]/g, ""); 
 // Claude Code config folders: ~/.claude and ~/.claude<anything> folders.
 const CLAUDE_DIRS = `for d in "$HOME"/.claude "$HOME"/.claude?*; do [ -d "$d" ] && printf '%s\\n' "$d"; done`;
 
-// sh -c CLAUDE_USAGE sh <config folder>. Prints the usage JSON, then the HTTP
-// status on its own last line. Exit 3: no login there; 4: its token expired.
+// sh -c CLAUDE_USAGE sh <config folder>. Prints the login's plan and rate tier
+// ("team\tdefault_claude_max_5x"), the usage JSON, then the HTTP status on its
+// own last line. Exit 3: no login there; 4: its token expired.
 const CLAUDE_USAGE = `svc="Claude Code-credentials"
 [ "$1" = "$HOME/.claude" ] || svc="$svc-$(printf %s "$1" | shasum -a 256 | cut -c1-8)"
 c=$(security find-generic-password -s "$svc" -w 2>/dev/null) || exit 3
 t=$(printf %s "$c" | plutil -extract claudeAiOauth.accessToken raw -o - - 2>/dev/null) || exit 3
 e=$(printf %s "$c" | plutil -extract claudeAiOauth.expiresAt raw -o - - 2>/dev/null)
 [ -n "$e" ] && [ $(( e / 1000 )) -lt "$(date +%s)" ] && exit 4
+printf '%s\t%s\n' "$(printf %s "$c" | plutil -extract claudeAiOauth.subscriptionType raw -o - - 2>/dev/null)" "$(printf %s "$c" | plutil -extract claudeAiOauth.rateLimitTier raw -o - - 2>/dev/null)"
 printf 'Authorization: Bearer %s\\n' "$t" | curl -sS --max-time 10 -H @- -H 'anthropic-beta: oauth-2025-04-20' -w '\\n%{http_code}' https://api.anthropic.com/api/oauth/usage`;
 
 // Claude: limits [{ kind, percent, resets_at, scope }] -> limits.
@@ -84,8 +86,16 @@ function claudeLimits(json) {
   return limits;
 }
 
-// ".claude" -> "Claude", ".claude2" -> "Claude 2", ".claude-work" -> "Claude work".
-const claudeName = (dir) => `Claude ${dir.split("/").pop().replace(/^\.claude[-_.]?/, "")}`.trim();
+// The login's plan: "team" -> "Claude Team"; "max" with tier
+// "default_claude_max_20x" -> "Claude Max 20x" (the multiplier only when the
+// tier is the plan's own). No plan: "Claude".
+function planName(plan, tier) {
+  if (!plan) return "Claude";
+  const mult = tier?.match(new RegExp(`${plan}_(\\d+x)$`, "i"))?.[1];
+  return `Claude ${plan[0].toUpperCase()}${plan.slice(1)}${mult ? ` ${mult}` : ""}`;
+}
+// ".claude2" -> "2", ".claude-work" -> "work", ".claude" -> "".
+const folderTag = (dir) => dir.split("/").pop().replace(/^\.claude[-_.]?/, "");
 
 // Codex: { primary, secondary: { used_percent, window_minutes, resets_at (s) } } -> limits.
 function codexLimits(rl) {
@@ -144,13 +154,14 @@ export default class UsageLimits extends View {
         if (Date.now() < (this.waitUntil[dir] ?? 0)) return;
         const u = await exec("sh", ["-c", CLAUDE_USAGE, "sh", dir], { timeout: 20_000 }).catch(() => null);
         if (!u || u.code !== 0) return; // no login there, expired token, or offline: keep the last answer
-        const nl = u.stdout.lastIndexOf("\n");
+        const first = u.stdout.indexOf("\n"), nl = u.stdout.lastIndexOf("\n");
+        const [plan, tier] = u.stdout.slice(0, first).split("\t");
         const status = Number(u.stdout.slice(nl + 1));
         if (status === 429) { this.waitUntil[dir] = Date.now() + BACKOFF_MS; return; }
         if (status !== 200) return;
         try {
-          const limits = claudeLimits(JSON.parse(u.stdout.slice(0, nl)));
-          if (limits.length) this.set({ key: `claude:${dir}`, name: claudeName(dir), tip: dir.replace(home(), "~"), icon: "claude", limits, at: Date.now() }, cx);
+          const limits = claudeLimits(JSON.parse(u.stdout.slice(first + 1, nl)));
+          if (limits.length) this.set({ key: `claude:${dir}`, name: planName(plan, tier), tag: folderTag(dir), tip: dir.replace(home(), "~"), icon: "claude", limits, at: Date.now() }, cx);
         } catch {}
       }));
     });
@@ -196,9 +207,11 @@ export default class UsageLimits extends View {
       if (!p?.icon) return div().size(14).flex_none();
       return p.tint ? svg(p.icon).size(14).flex_none().text_color(p.color ?? t.muted) : image(p.icon).w(14).h(14).flex_none();
     };
-    // Claude accounts first (~/.claude, then the others by name), then Codex.
+    // Claude accounts first (~/.claude, then the other folders), then Codex.
+    // Two accounts on the same plan: the second gets its folder, "Claude Max · 2".
     const rows = Object.values(this.rows).filter((s) => s.limits?.length)
-      .sort((a, b) => (a.icon === b.icon ? a.name.localeCompare(b.name) : a.icon === "claude" ? -1 : 1));
+      .sort((a, b) => (a.icon === b.icon ? a.key.localeCompare(b.key) : a.icon === "claude" ? -1 : 1))
+      .map((s, i, all) => (s.tag && all.some((o) => o !== s && o.name === s.name) ? { ...s, name: `${s.name} · ${s.tag}` } : s));
     // `5h ━── 8% 4h`: label, a bar sharing the row's width, the %, the
     // countdown. Collapsed: the bar alone.
     const gauge = (l, id) => h_flex().flex_1().min_w(0).gap(4).items_center().text_size(11)

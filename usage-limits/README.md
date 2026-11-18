@@ -8,8 +8,9 @@ It works on its own, with nothing from your status line.
 
 ## What it does
 
-- **A row per account**: one per Claude Code config folder with a login
-  (`~/.claude` is "Claude", `~/.claude2` is "Claude 2", ...), and Codex.
+- **A row per account**: one per Claude Code config folder with a login, named
+  by its plan ("Claude Team", "Claude Max 20x"), and Codex. Two folders on the
+  same plan: the second shows its folder too ("Claude Max · 2").
 - **Gauges across the row**: `5h`, `7d`, and a model's own weekly limit (`fbl`
   for Fable), each with a bar, the % (green, yellow from 50%, red from 80%) and
   the time to reset (`47m`, `3h`, `5d`). The tooltip has the full names and
