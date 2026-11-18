@@ -354,11 +354,11 @@ export default class QuickLinks extends View {
     }
 
     if (issue) {
-      // With status: "WEB-140 · In Review" and the status's color; an issue
+      // With status: "WEB-140 · In Review", the logo in the status's color; an issue
       // moved to another team shows (and opens) its new ID.
       const s = this.statuses.get(issue)?.value;
       links.push(s
-        ? { id: "linear", icon: "linear", label: `${s.id} · ${s.state}`, url: s.url, dot: s.color ?? STATUS_COLOR[s.type] ?? "muted",
+        ? { id: "linear", icon: "linear", label: `${s.id} · ${s.state}`, url: s.url, color: s.color ?? STATUS_COLOR[s.type] ?? "muted",
             tip: `${s.state}: ${s.title}${s.id !== issue ? ` (was ${issue})` : ""}` }
         : { id: "linear", icon: "linear", label: issue, url: `https://linear.app/${slug}/issue/${issue}`, tip: `Linear ${issue}` });
     }
@@ -389,9 +389,9 @@ export default class QuickLinks extends View {
       .on_mouse_down("left", stop)
       .on_click(() => this.activate(l))
       .tooltip(l.tip)
-      .child(svg(icon(l.icon)).size(14).text_color(l.color ? t[l.color] : t.muted))
+      .child(svg(icon(l.icon)).size(14).text_color(!l.color ? t.muted : l.color.startsWith("#") ? l.color : t[l.color]))
       .child(div().max_w(160).truncate().child(l.label))
-      .when(Boolean(l.dot), (el) => el.child(div().size(6).rounded(3).flex_none().bg(l.dot.startsWith("#") ? l.dot : t[l.dot])));
+      .when(Boolean(l.dot), (el) => el.child(div().size(6).rounded(3).flex_none().bg(t[l.dot])));
     // PRs: toggles the pr-inbox panel (the layout's panel-body child "prs"),
     // with how many PRs wait on your review once that panel has loaded.
     const find = (n, id) => !n || typeof n !== "object" ? null : n.id === id ? n : (n.children ?? []).reduce((f, c) => f ?? find(c, id), null);

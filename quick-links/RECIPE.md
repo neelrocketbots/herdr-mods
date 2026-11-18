@@ -30,7 +30,7 @@ folder, git remote and branch, and changes as you move between terminals.
      repo name, e.g. `ui#91`.
   4. **Merged · clean up** in `ansi5`, on a worktree whose PR is merged.
   5. **Linear**: the Linear icon and the issue ID, e.g. `WEB-140`. With a Linear
-     API key: `WEB-140 · In Review` with a 6px dot in the status's Linear color,
+     API key: `WEB-140 · In Review` with the Linear icon in the status's Linear color,
      tooltip "In Review: <title>"; an issue moved to another team shows its new
      ID ("(was WEB-140)").
   6. **Worktree**: the worktree icon and "Worktree".
