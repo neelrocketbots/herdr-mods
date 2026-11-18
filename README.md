@@ -25,6 +25,7 @@ and a screenshot. Take one or all.
 | [`pr-inbox`](pr-inbox) | PRs waiting on your review and your own, across repos. A side panel in `custom-herdr`, a dialog (⌘⌥P) anywhere else |
 | [`files-md`](files-md) | Herdr's Files panel, plus rendered markdown (images included) and open in your editor |
 | [`changes-editor`](changes-editor) | Herdr's Changes panel, plus open in your editor |
+| [`usage-limits`](usage-limits) | Sidebar: Claude (each account) and Codex rate limits as status-line style gauges with reset times |
 | [`custom-herdr`](custom-herdr) | Layout: Herdr's main layout with all of the above wired in (bundles its own copies of the mods) |
 
 <p>
@@ -108,9 +109,11 @@ They're trusted code, like any Herdr mod, and run as you:
 | pr-inbox | `gh api graphql`, `open` | GitHub, through `gh` | none |
 | files-md | Herdr's own (`git`, file reads), your editor, `cp`/`curl`/`sips` for markdown images | remote images in markdown files (`curl`) | reads `herdr-mods.json`; caches images in `data/files-md/img` |
 | changes-editor | Herdr's own (`git`, file reads) plus your editor | none added | reads `herdr-mods.json` |
+| usage-limits | `security`, `plutil`, `shasum`, `curl`; `find`, `grep`, `stat` | Anthropic's usage endpoint, with each Claude Code login's token | reads Claude Code's Keychain logins (token piped to `curl`, never stored) and `~/.codex/sessions` |
 
 Nothing is sent anywhere else. `gh` uses its own login; the Linear key, if you
-add one, stays in your Keychain.
+add one, stays in your Keychain. usage-limits reads Claude Code's own Keychain
+logins only to ask Anthropic for your usage; it stores no token.
 Removing a worktree runs `git branch -D` (after a confirm that warns about
 uncommitted changes).
 

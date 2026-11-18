@@ -50,6 +50,19 @@
           ]
         },
         {
+          "id": "usage",
+          "type": "block",
+          "size": {
+            "px": 62
+          },
+          "content": {
+            "mod": "usage-limits",
+            "props": {
+              "block": "usage"
+            }
+          }
+        },
+        {
           "id": "sidebar-footer",
           "type": "block",
           "content": {
