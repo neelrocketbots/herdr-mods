@@ -26,6 +26,7 @@ import { exec, home, theme, run, props, checking, knownAgents } from "herdr";
 const CODEX_DIR = ".codex/sessions"; // under home
 const POLL_MS = 5 * 60_000;
 const BACKOFF_MS = 15 * 60_000;      // after Anthropic says 429
+const PLAN_MS = 60 * 60_000;         // ask for each Claude login's plan this often
 const CACHE_KEY = "usage-limits.v2"; // localStorage: last answers
 const COLLAPSED_KEY = "usage-limits.collapsed"; // localStorage: "1" when collapsed
 
@@ -58,16 +59,25 @@ const abbrev = (name) => { const w = name.toLowerCase().replace(/[^a-z]/g, ""); 
 // Claude Code config folders: ~/.claude and ~/.claude<anything> folders.
 const CLAUDE_DIRS = `for d in "$HOME"/.claude "$HOME"/.claude?*; do [ -d "$d" ] && printf '%s\\n' "$d"; done`;
 
-// sh -c CLAUDE_USAGE sh <config folder>. Prints the login's plan and rate tier
-// ("team\tdefault_claude_max_5x"), the usage JSON, then the HTTP status on its
-// own last line. Exit 3: no login there; 4: its token expired.
+// sh -c CLAUDE_USAGE sh <config folder> <1: ask for the plan too>. Prints the
+// plan (the profile's organization.plan_display_name, e.g. "Ultra", else its
+// organization_type, e.g. "claude_team"; empty when not asked), the usage
+// JSON, then the HTTP status on its own last line. Only the plan leaves the
+// shell, not the profile (it holds your email and name). Exit 3: no login
+// there; 4: its token expired.
 const CLAUDE_USAGE = `svc="Claude Code-credentials"
 [ "$1" = "$HOME/.claude" ] || svc="$svc-$(printf %s "$1" | shasum -a 256 | cut -c1-8)"
 c=$(security find-generic-password -s "$svc" -w 2>/dev/null) || exit 3
 t=$(printf %s "$c" | plutil -extract claudeAiOauth.accessToken raw -o - - 2>/dev/null) || exit 3
 e=$(printf %s "$c" | plutil -extract claudeAiOauth.expiresAt raw -o - - 2>/dev/null)
 [ -n "$e" ] && [ $(( e / 1000 )) -lt "$(date +%s)" ] && exit 4
-printf '%s\t%s\n' "$(printf %s "$c" | plutil -extract claudeAiOauth.subscriptionType raw -o - - 2>/dev/null)" "$(printf %s "$c" | plutil -extract claudeAiOauth.rateLimitTier raw -o - - 2>/dev/null)"
+p=""
+if [ "$2" = 1 ]; then
+  prof=$(printf 'Authorization: Bearer %s\n' "$t" | curl -sS --max-time 10 -H @- -H 'anthropic-beta: oauth-2025-04-20' https://api.anthropic.com/api/oauth/profile)
+  p=$(printf %s "$prof" | plutil -extract organization.plan_display_name raw -o - - 2>/dev/null) || p=""
+  [ -n "$p" ] || p=$(printf %s "$prof" | plutil -extract organization.organization_type raw -o - - 2>/dev/null) || p=""
+fi
+printf '%s\n' "$p" | tr -d '\t'
 printf 'Authorization: Bearer %s\\n' "$t" | curl -sS --max-time 10 -H @- -H 'anthropic-beta: oauth-2025-04-20' -w '\\n%{http_code}' https://api.anthropic.com/api/oauth/usage`;
 
 // Claude: limits [{ kind, percent, resets_at, scope }] -> limits.
@@ -86,13 +96,10 @@ function claudeLimits(json) {
   return limits;
 }
 
-// The login's plan: "team" -> "Claude Team"; "max" with tier
-// "default_claude_max_20x" -> "Claude Max 20x" (the multiplier only when the
-// tier is the plan's own). No plan: "Claude".
-function planName(plan, tier) {
-  if (!plan) return "Claude";
-  const mult = tier?.match(new RegExp(`${plan}_(\\d+x)$`, "i"))?.[1];
-  return `Claude ${plan[0].toUpperCase()}${plan.slice(1)}${mult ? ` ${mult}` : ""}`;
+// "Ultra" -> "Claude Ultra", "claude_team" -> "Claude Team"; none -> "Claude".
+function planName(plan) {
+  const p = (plan ?? "").replace(/^claude_/, "").replace(/_/g, " ").trim();
+  return p ? `Claude ${p[0].toUpperCase()}${p.slice(1)}` : "Claude";
 }
 // ".claude2" -> "2", ".claude-work" -> "work", ".claude" -> "".
 const folderTag = (dir) => dir.split("/").pop().replace(/^\.claude[-_.]?/, "");
@@ -152,16 +159,19 @@ export default class UsageLimits extends View {
       const dirs = (r?.stdout ?? "").split("\n").filter(Boolean);
       await Promise.all(dirs.map(async (dir) => {
         if (Date.now() < (this.waitUntil[dir] ?? 0)) return;
-        const u = await exec("sh", ["-c", CLAUDE_USAGE, "sh", dir], { timeout: 20_000 }).catch(() => null);
+        const old = this.rows[`claude:${dir}`];
+        const askPlan = !old?.plan || Date.now() - (old.planAt ?? 0) > PLAN_MS;
+        const u = await exec("sh", ["-c", CLAUDE_USAGE, "sh", dir, askPlan ? "1" : "0"], { timeout: 30_000 }).catch(() => null);
         if (!u || u.code !== 0) return; // no login there, expired token, or offline: keep the last answer
         const first = u.stdout.indexOf("\n"), nl = u.stdout.lastIndexOf("\n");
-        const [plan, tier] = u.stdout.slice(0, first).split("\t");
+        const asked = u.stdout.slice(0, first).trim();
+        const plan = asked || old?.plan || "", planAt = asked ? Date.now() : old?.planAt ?? 0;
         const status = Number(u.stdout.slice(nl + 1));
         if (status === 429) { this.waitUntil[dir] = Date.now() + BACKOFF_MS; return; }
         if (status !== 200) return;
         try {
           const limits = claudeLimits(JSON.parse(u.stdout.slice(first + 1, nl)));
-          if (limits.length) this.set({ key: `claude:${dir}`, name: planName(plan, tier), tag: folderTag(dir), tip: dir.replace(home(), "~"), icon: "claude", limits, at: Date.now() }, cx);
+          if (limits.length) this.set({ key: `claude:${dir}`, name: planName(plan), plan, planAt, tag: folderTag(dir), tip: dir.replace(home(), "~"), icon: "claude", limits, at: Date.now() }, cx);
         } catch {}
       }));
     });

@@ -9,7 +9,7 @@ It works on its own, with nothing from your status line.
 ## What it does
 
 - **A row per account**: one per Claude Code config folder with a login, named
-  by its plan ("Claude Team", "Claude Max 20x"), and Codex. Two folders on the
+  by its current plan ("Claude Team", "Claude Ultra"), and Codex. Two folders on the
   same plan: the second shows its folder too ("Claude Max · 2").
 - **Gauges across the row**: `5h`, `7d`, and a model's own weekly limit (`fbl`
   for Fable), each with a bar, the % (green, yellow from 50%, red from 80%) and
@@ -42,6 +42,8 @@ It sizes the block to its rows.
 Code login from the macOS Keychain (`Claude Code-credentials`, plus a suffix
 for folders other than `~/.claude`), and a shell pipes its access token to
 `curl`, which asks Anthropic's usage endpoint (`api.anthropic.com/api/oauth/usage`).
+Once an hour the same shell also asks Anthropic's profile endpoint
+(`/api/oauth/profile`) for the account's plan, and passes on only the plan name.
 The token is never stored, and never reaches the mod or a command line. The
 endpoint is undocumented, so it may change. macOS may ask once to allow
 `security` to read Claude Code's Keychain item. An expired token (Claude Code
