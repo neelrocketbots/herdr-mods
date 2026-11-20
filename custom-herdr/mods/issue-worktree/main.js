@@ -5,6 +5,11 @@
 //   <repo>/.worktrees/<name>   on branch <name>
 //   branched from a fresh origin/master
 //
+// A name with a prefix (hotfix/WEB-140) is the branch; the folder is its last
+// part (.worktrees/WEB-140). Worktrees nested deeper (.worktrees/WEB-140/web)
+// or outside .worktrees are listed too; removing or moving one also deletes
+// the parent folders it leaves empty, but only inside .worktrees/.
+//
 // Below the form it lists the repo's existing worktrees (newest commit first,
 // filtered by what's typed in the name field). Clicking one goes to its space,
 // or opens a new space there with a terminal. Creating an issue whose folder
@@ -28,10 +33,31 @@ import { linearId, issueStatus, STATUS_COLOR } from "./linear.js";
 
 const BASE = { remote: "origin", branch: "master" };
 const LIST_MAX = 320; // px of worktree list before it scrolls
-// Safe as both a folder and a branch name.
-const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+// One part of a name, safe as both a folder and a branch name part.
+const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+// "hotfix/WEB-140" -> { branch: "hotfix/WEB-140", folder: "WEB-140" }; null when invalid.
+function parseName(id) {
+  const parts = id.split("/");
+  if (id.includes("..") || !parts.every((p) => SEGMENT.test(p) && !p.endsWith(".lock"))) return null;
+  return { branch: id, folder: parts[parts.length - 1] };
+}
+// A row's title: its folder under .worktrees/ (FRONT-504/web), else the folder's name.
+function folderLabel(path, root) {
+  const under = `${root}/.worktrees/`;
+  return path.startsWith(under) ? path.slice(under.length) : path.split("/").pop();
+}
 
 const git = (args, cwd, timeout = 60_000) => exec("git", args, { cwd, timeout });
+
+// After a worktree at `path` is removed or moved: delete the parent folders it
+// left empty, deepest first, never .worktrees/ itself or anything outside it.
+// rmdir only removes empty folders, so anything with files in it stays.
+async function pruneEmptyParents(path, root) {
+  const top = `${root}/.worktrees`;
+  for (let dir = path.slice(0, path.lastIndexOf("/")); dir.startsWith(`${top}/`); dir = dir.slice(0, dir.lastIndexOf("/"))) {
+    if ((await exec("rmdir", [dir])).code !== 0) return;
+  }
+}
 
 // Programs whose working folder is inside `path` (a dev server, a shell, an
 // agent): "node (4211)". Removing a worktree under them can stop partway.
@@ -139,7 +165,7 @@ export default class IssueWorktree extends View {
     this.repo = null;   // { gitDir, root } once found
     this.list = undefined;
     this.home = checking() ? "" : home();
-    this.issueInput = InputState.new({ placeholder: "WEB-140 (also filters the list below)" });
+    this.issueInput = InputState.new({ placeholder: "WEB-140 or hotfix/WEB-140 (also filters the list below)" });
     this.issueInput.on("change", (_e, cx) => { this.issue = this.issueInput.value(); this.error = null; cx.notify(); });
     this.issueInput.on("submit", (_e, cx) => this.create(cx));
     this.handle = cx.focus_handle();
@@ -256,6 +282,7 @@ export default class IssueWorktree extends View {
           if (s) run("space.close", { id: s.id, confirmed: true });
           const wm = await git(["worktree", "move", r.path, dir], this.repo.root);
           if (wm.code !== 0) throw new Error(wm.stderr.trim() || "git worktree move failed");
+          await pruneEmptyParents(r.path, this.repo.root);
           if (s) run("space.new", { folder: dir });
         }
         this.renaming = null;
@@ -303,6 +330,7 @@ export default class IssueWorktree extends View {
           if (left.code !== 0) throw new Error(`Couldn't delete the leftover folder: ${left.stderr.trim()}`);
           notify({ title: "Worktree removed", body: "git had already let go of it; its leftover files were deleted.", level: "info" });
         }
+        await pruneEmptyParents(c.path, this.repo.root);
         if (c.branch) {
           const br = await git(["branch", "-D", c.branch], this.repo.root);
           if (br.code !== 0) notify({ title: "Worktree removed, branch kept", body: br.stderr.trim(), level: "warning" });
@@ -338,23 +366,24 @@ export default class IssueWorktree extends View {
 
   create(cx) {
     if (this.busy) return;
-    const id = this.id();
-    if (!NAME.test(id) || id.endsWith(".lock") || id.includes("..")) { this.error = "Use letters, numbers, dot, dash or underscore, e.g. WEB-140"; cx.notify(); return; }
+    const name = parseName(this.id());
+    if (!name) { this.error = "Use letters, numbers, dot, dash or underscore, / separates a prefix, e.g. WEB-140 or hotfix/WEB-140"; cx.notify(); return; }
     if (!this.repo) { this.error = this.repoError ?? "Still finding the repo…"; cx.notify(); return; }
-    const { gitDir, root } = this.repo, branch = id, dir = `${root}/.worktrees/${id}`;
+    const { gitDir, root } = this.repo, { branch, folder } = name, dir = `${root}/.worktrees/${folder}`;
     this.busy = "Checking…"; this.error = null; cx.notify();
 
     cx.spawn(async (cx) => {
       const step = (text) => { this.busy = text; cx.notify(); };
       try {
         if ((await exec("test", ["-d", dir])).code === 0) { this.open(dir); return; }
+        if ((await git(["check-ref-format", "--branch", branch], root)).code !== 0) throw new Error(`"${branch}" isn't a valid branch name`);
 
         step(`Fetching ${BASE.remote}/${BASE.branch}…`);
         const fetch = await git(["fetch", BASE.remote, BASE.branch], root, 120_000);
         if (fetch.code !== 0) throw new Error(fetch.stderr.trim() || "git fetch failed");
 
         // Keep .worktrees/ out of `git status` in repos that don't ignore it.
-        if ((await git(["check-ignore", "-q", `.worktrees/${id}`], root)).code !== 0) {
+        if ((await git(["check-ignore", "-q", `.worktrees/${folder}`], root)).code !== 0) {
           await exec("sh", ["-c", 'mkdir -p "$(dirname "$1")" && printf "\\n.worktrees/\\n" >> "$1"', "sh", `${gitDir}/info/exclude`]);
         }
 
@@ -384,11 +413,13 @@ export default class IssueWorktree extends View {
       const renaming = this.renaming?.path === c.path ? this.renaming : null;
       const ci = pr?.state === "OPEN" ? ciSummary(pr.statusCheckRollup) : null;
       const prWord = pr ? (pr.isDraft && pr.state === "OPEN" ? "draft" : pr.state.toLowerCase()) : null;
+      // Title: the folder (short, unique); the branch goes under it when it says more.
+      const label = folderLabel(c.path, this.repo?.root ?? ""), branchNote = c.branch === label ? null : (c.branch ?? "detached");
       return v_flex().id(`iw-wt-${i}`).flex_none().min_h(44).py(5).px(10).justify_center().rounded(7).cursor_pointer()
         .when(confirming || Boolean(renaming), (el) => el.bg(t.raised)).when(!confirming && !renaming, (el) => el.hover((s) => s.bg(t.hover)))
         .on_click(() => this.open(c.path))
         .child(h_flex().gap(6).items_center()
-          .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(c.branch ?? "detached"))
+          .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(label))
           .when(Boolean(pr), (el) => el.child(h_flex().id(`iw-pr-${i}`).flex_none().gap(4).items_center().px(5).py(1).rounded(5)
             .text_size(11).text_color(pr.isDraft ? t.dim : t[PR_COLOR[pr.state]] ?? t.muted).cursor_pointer().hover((s) => s.bg(t.raised))
             .tooltip(`${pr.title}${ci ? ` · ${CI_WORD[ci.state]}` : ""}`)
@@ -406,7 +437,7 @@ export default class IssueWorktree extends View {
           .child(action(`iw-editor-${i}`, svg("mods/issue-worktree/editor.svg").size(13), () => this.openEditor(c.path)).tooltip(`Open in ${shared("herdr-mods.editor") ?? this.editor}`))
           .child(action(`iw-rn-${i}`, "rename", (cx) => this.startRename(c, cx)))
           .child(action(`iw-rm-${i}`, "remove", (cx) => this.askRemove(c, cx), t.ansi1)))
-        .child(div().truncate().text_size(11.5).text_color(t.dim).child(tilde(c.path)))
+        .child(div().truncate().text_size(11.5).text_color(t.dim).child(branchNote ? `${branchNote}  ·  ${tilde(c.path)}` : tilde(c.path)))
         .when(confirming, (el) => el.child(h_flex().pt(6).gap(6).items_center()
           .child(div().flex_1().min_w(0).text_size(11.5).text_color(this.confirm.dirty || this.confirm.running?.length ? t.ansi1 : t.muted)
             .child((this.confirm.running?.length ? `Still running in it: ${this.confirm.running.join(", ")}. Stop them first. ` : "") +
@@ -455,8 +486,8 @@ export default class IssueWorktree extends View {
       .text_color(primary ? t.solid_foreground : t.foreground).text_size(12.5).font_medium().cursor_pointer()
       .when(Boolean(this.busy), (el) => el.opacity(0.6))
       .hover((s) => s.opacity(0.88)).on_click(action).child(text);
-    const id = this.id(), valid = NAME.test(id);
-    const exists = valid && this.repo && (this.list ?? []).some((c) => c.path === `${this.repo.root}/.worktrees/${id}`);
+    const name = parseName(this.id());
+    const exists = name && this.repo && (this.list ?? []).some((c) => c.path === `${this.repo.root}/.worktrees/${name.folder}`);
 
     return v_flex().id("issue-worktree").track_focus(this.handle).w_full().min_h(0).p(18).bg(t.popover).text_color(t.foreground)
       .child(h_flex().items_center()
@@ -466,8 +497,8 @@ export default class IssueWorktree extends View {
       .child(Input.new(this.issueInput).h(36).px(10).rounded(9).border_1().border_color(t.accent)
         .bg(t.background).text_size(12.8).text_color(t.foreground))
       .child(v_flex().pt(14).gap(3).text_size(11.5).text_color(t.dim)
-        .child(div().truncate().child(exists ? `.worktrees/${id} already exists · Enter opens it` : `Branch  ${valid ? id : "—"}`))
-        .when(!exists, (el) => el.child(div().truncate().child(`Folder  .worktrees/${valid ? id : "—"}  ·  from ${BASE.remote}/${BASE.branch}  ·  opens a terminal`))))
+        .child(div().truncate().child(exists ? `.worktrees/${name.folder} already exists · Enter opens it` : `Branch  ${name?.branch ?? "—"}`))
+        .when(!exists, (el) => el.child(div().truncate().child(`Folder  .worktrees/${name?.folder ?? "—"}  ·  from ${BASE.remote}/${BASE.branch}  ·  opens a terminal`))))
       .when(Boolean(this.error), (el) => el.child(div().pt(10).text_size(11.5).text_color(t.ansi1).child(this.error)))
       .child(h_flex().pt(18).gap(8).items_center()
         .child(div().flex_1().text_size(11.5).text_color(t.dim).child(this.busy ?? ""))

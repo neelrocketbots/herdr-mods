@@ -25,15 +25,17 @@ with its pull request and CI, an open-in-editor button, rename and remove.
   busy, at 0.6 opacity).
 - A 1px `border` line, then "Existing worktrees" with a count (`8`, or `3/8`
   when filtered).
-- Rows of at least 44px with 7px corners. Line one: the branch (or "detached"),
+- Rows of at least 44px with 7px corners. Line one: the folder (its path under
+  `.worktrees/`, e.g. `HOT-3086` or `FRONT-504/web`, else the folder's name),
   a PR chip (`#482 open`, `#479 draft`, `#465 merged`; 11px, tinted `ansi2`,
   `ansi5`, `ansi1`, or `dim` for drafts) with a 6px CI dot on open PRs, then
   the Linear status chip (12px Linear icon in the status's color, then e.g. "In Review",
   11px `muted`; tooltip "<ID>: <title>", click opens the issue), then
   "open" in `accent` when a space shows it, else how long since its last commit
   (`5m`, `3h`, `2d`, `1mo`), then a 13px editor icon, "rename" and "remove"
-  (11px `dim`; remove turns `ansi1` on hover). Line two: the path with `~` for
-  home, 11.5px `dim`.
+  (11px `dim`; remove turns `ansi1` on hover). Line two, 11.5px `dim`: the
+  branch (or "detached") and `  ·  ` unless the branch equals line one, then
+  the path with `~` for home.
 - The list is as tall as its rows (56px each, plus 120 for a row being renamed
   and 36 for one confirming removal), at most 320px, then it scrolls with a
   scrollbar.
@@ -54,11 +56,14 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 - Linear status: the branch's issue ID (`linear.js`, shared with quick-links),
   one request for all rows, cached 60s in module scope. No API key: no chip,
   asked again after 60s.
-- Typing filters the rows by branch and path. Enter or Create: names must match
-  `^[A-Za-z0-9][A-Za-z0-9._-]*$`, not end in `.lock` and not contain `..`. An
-  existing folder just opens. Otherwise it runs `git fetch origin master`
+- Typing filters the rows by branch and path. Enter or Create: the name splits on
+  `/`; every part must match `^[A-Za-z0-9][A-Za-z0-9._-]*$` and not end in
+  `.lock`, and the name must not contain `..`. The whole name is the branch, the
+  last part the folder (`hotfix/WEB-140` -> `.worktrees/WEB-140`); the two
+  hint lines show both. An existing folder just opens. Otherwise it checks
+  `git check-ref-format --branch`, runs `git fetch origin master`
   (2-minute limit), adds `.worktrees/` to `.git/info/exclude` when the repo
-  doesn't ignore it, runs `git worktree add -b <name> <dir> origin/master`,
+  doesn't ignore it, runs `git worktree add -b <branch> <dir> origin/master`,
   closes and runs `space.new { folder }`.
 - Clicking a row goes to the space showing that folder (`space.select`), else
   runs `space.new` there. The space is the one whose first terminal is inside
@@ -70,6 +75,9 @@ with its pull request and CI, an open-in-editor button, rename and remove.
   "Uncommitted changes will be lost. Remove anyway?". Confirming closes the
   space (`space.close` confirmed), runs `git worktree remove` (`--force` when
   dirty) and `git branch -D`. A failed branch delete becomes a warning toast.
+  After a remove or move, `rmdir` walks up from the old folder's parent while
+  it's inside `.worktrees/` (not `.worktrees/` itself), stopping at the first
+  folder that isn't empty.
   Opening with `{ remove: <path> }` goes straight to that row's confirmation.
 - Rename: an inline input prefilled with the branch, and a checkbox "Also move
   the folder to .worktrees/<last part of the name>" (with "closes and reopens
