@@ -11,13 +11,18 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 
 ## What you see
 
-- Panel: fills the side panel on `background` with a 1px `border`, 10px
-  corners and 14px padding. Title "Worktrees" 13.5px semibold, then the repo's
-  folder name in 11.5px `dim`; the field's label reads "New worktree"; no Cancel
-  button; the list takes the remaining height. It follows the focused
-  terminal's folder while shown (same repo: reload; another repo: start over),
-  reloads when shown again after 60s, and focuses the name field on showing.
-  Creating clears the field and reloads instead of closing.
+- Panel: sized like the PRs panel. Fills the side panel on `background` with
+  a 1px `border`, 10px corners and 13px text. A 42px header (14px sides,
+  `border` below): "Worktrees" semibold, then the repo's folder name in 11px
+  `dim`. Then a form block (14px sides, 10px top and bottom, `border` below):
+  a 30px input (7px corners, `accent` border, 12px text) with a 30px "Create"
+  button on `solid` beside it, the two hint lines, then busy/error lines, all
+  11.5px. "Existing worktrees" (11.5px `dim`) and the list (6px padding) take
+  the rest; rows have 10px sides, 7px top and bottom, 3px between lines. It
+  follows the focused terminal's folder while shown (same repo: reload;
+  another repo: start over), reloads when shown again after 60s, and focuses
+  the name field on showing. Creating clears the field and reloads instead of
+  closing.
 - Dialog: 460px wide on the theme's `popover`, with 18px padding. The title
   "New worktree" is 15px semibold, with "Esc" in 11px `dim` on the right.
 - "Worktree name" (11.5px `dim`), then a 36px input with 9px corners, a 1px

@@ -450,7 +450,7 @@ export default class IssueWorktree extends View {
   }
 
   renderList(t) {
-    const all = this.list, rows = this.shown();
+    const all = this.list, rows = this.shown(), panel = this.panel();
     const tilde = (p) => (this.home && p.startsWith(this.home) ? `~${p.slice(this.home.length)}` : p);
     const PR_COLOR = { OPEN: "ansi2", MERGED: "ansi5", CLOSED: "ansi1" };
     const action = (id, child, onClick, hover = t.foreground) => div().id(id).flex_none().px(5).py(1).rounded(5)
@@ -465,7 +465,8 @@ export default class IssueWorktree extends View {
       const label = folderLabel(c.path, this.repo?.root ?? ""), branchNote = c.branch === label ? null : (c.branch ?? "detached");
       // The worktree whose space is the one shown now.
       const current = Boolean(there?.active);
-      return v_flex().id(`iw-wt-${i}`).flex_none().min_h(44).py(5).px(10).justify_center().rounded(7).cursor_pointer()
+      return v_flex().id(`iw-wt-${i}`).flex_none().px(10).justify_center().rounded(7).cursor_pointer()
+        .when(panel, (el) => el.py(7).gap(3)).when(!panel, (el) => el.min_h(44).py(5))
         .when(current && !confirming && !renaming, (el) => el.bg(t.selected))
         .when(confirming || Boolean(renaming), (el) => el.bg(t.raised)).when(!confirming && !renaming, (el) => el.hover((s) => s.bg(t.hover)))
         .on_click(() => this.open(c.path))
@@ -515,19 +516,19 @@ export default class IssueWorktree extends View {
         });
     };
     const count = all === undefined ? "loading…" : rows.length === all.length ? `${all.length}` : `${rows.length}/${all.length}`;
-    const panel = this.panel();
     // A content-sized dialog gives the list no height to scroll in, so it gets
     // one: its rows' height, at most LIST_MAX (then it scrolls). The panel's
     // list takes whatever height is left.
     const box = panel ? div().flex_1().min_h(0).relative()
       : div().relative().h(Math.min(LIST_MAX, Math.max(40, rows.reduce((h, c) =>
           h + 56 + (this.renaming?.path === c.path ? 120 : 0) + (this.confirm?.path === c.path ? 36 : 0), 0))));
-    return v_flex().pt(16).when(panel, (el) => el.flex_1().min_h(0))
-      .child(h_flex().pb(6).gap(6).items_center().border_t(1).border_color(t.border).pt(12)
-        .child(div().text_size(11.5).text_color(t.dim).child("Existing worktrees"))
-        .child(div().text_size(11).text_color(t.dim).child(count)))
+    const heading = h_flex().gap(6).items_center()
+      .child(div().text_size(11.5).text_color(t.dim).child("Existing worktrees"))
+      .child(div().text_size(11).text_color(t.dim).child(count));
+    return v_flex().when(panel, (el) => el.flex_1().min_h(0)).when(!panel, (el) => el.pt(16))
+      .child(panel ? heading.flex_none().px(16).pt(10).pb(4) : heading.pb(6).border_t(1).border_color(t.border).pt(12))
       .child(box
-        .child(v_flex().id("iw-list").size_full().overflow_y_scroll().gap(2)
+        .child(v_flex().id("iw-list").size_full().overflow_y_scroll().gap(2).when(panel, (el) => el.p(6))
           .children(rows.map(row))
           .when(all !== undefined && rows.length === 0, (el) => el.child(div().px(10).py(8).text_size(12).text_color(t.dim)
             .child(this.repoError ?? (all.length ? "No worktree matches" : "No worktrees yet")))))
@@ -547,26 +548,43 @@ export default class IssueWorktree extends View {
     const exists = name && this.repo && (this.list ?? []).some((c) => c.path === `${this.repo.root}/.worktrees/${name.folder}`);
 
     const repoName = this.repo?.root.split("/").pop();
-    const root = panel
-      ? v_flex().id("issue-worktree").track_focus(this.handle).size_full().min_h(0).p(14).rounded(10).overflow_hidden()
-        .bg(t.background).border_1().border_color(t.border).text_color(t.foreground)
-      : v_flex().id("issue-worktree").track_focus(this.handle).w_full().min_h(0).p(18).bg(t.popover).text_color(t.foreground);
-    return root
+    const hints = v_flex().gap(3).text_size(11.5).text_color(t.dim)
+      .child(div().truncate().child(exists ? `.worktrees/${name.folder} already exists · Enter opens it` : `Branch  ${name?.branch ?? "—"}`))
+      .when(!exists, (el) => el.child(div().truncate().child(`Folder  .worktrees/${name?.folder ?? "—"}  ·  from ${BASE.remote}/${BASE.branch}  ·  opens a terminal`)));
+
+    if (panel) {
+      // Sized like the PRs panel: 13px text, a 42px header, 11.5px secondary lines.
+      return v_flex().id("issue-worktree").track_focus(this.handle).size_full().min_h(0).rounded(10).overflow_hidden()
+        .bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
+        .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
+          .child(div().flex_none().font_semibold().child("Worktrees"))
+          .when(Boolean(repoName), (el) => el.child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(repoName))))
+        .child(v_flex().flex_none().px(14).py(10).gap(8).border_b(1).border_color(t.border)
+          .child(h_flex().gap(6).items_center()
+            .child(Input.new(this.issueInput).flex_1().h(30).px(9).rounded(7).border_1().border_color(t.accent)
+              .bg(t.background).text_size(12).text_color(t.foreground))
+            .child(h_flex().id("iw-create").h(30).px(12).flex_none().items_center().rounded(7).bg(t.solid)
+              .text_color(t.solid_foreground).text_size(12).font_medium().cursor_pointer()
+              .when(Boolean(this.busy), (el) => el.opacity(0.6)).hover((s) => s.opacity(0.88))
+              .on_click((_e, cx) => this.create(cx)).child(this.busy ? "Working…" : exists ? "Open" : "Create")))
+          .child(hints)
+          .when(Boolean(this.busy), (el) => el.child(div().text_size(11.5).text_color(t.dim).child(this.busy)))
+          .when(Boolean(this.error), (el) => el.child(div().text_size(11.5).text_color(t.ansi1).child(this.error))))
+        .child(this.renderList(t));
+    }
+
+    return v_flex().id("issue-worktree").track_focus(this.handle).w_full().min_h(0).p(18).bg(t.popover).text_color(t.foreground)
       .child(h_flex().items_center().gap(8)
-        .child(div().flex_none().text_size(panel ? 13.5 : 15).font_semibold().child(panel ? "Worktrees" : "New worktree"))
-        .when(panel && Boolean(repoName), (el) => el.child(div().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(repoName)))
-        .child(div().flex_1())
-        .when(!panel, (el) => el.child(div().text_size(11).text_color(t.dim).child("Esc"))))
-      .child(label(panel ? "New worktree" : "Worktree name"))
+        .child(div().flex_1().text_size(15).font_semibold().child("New worktree"))
+        .child(div().text_size(11).text_color(t.dim).child("Esc")))
+      .child(label("Worktree name"))
       .child(Input.new(this.issueInput).h(36).px(10).rounded(9).border_1().border_color(t.accent)
         .bg(t.background).text_size(12.8).text_color(t.foreground))
-      .child(v_flex().pt(14).gap(3).text_size(11.5).text_color(t.dim)
-        .child(div().truncate().child(exists ? `.worktrees/${name.folder} already exists · Enter opens it` : `Branch  ${name?.branch ?? "—"}`))
-        .when(!exists, (el) => el.child(div().truncate().child(`Folder  .worktrees/${name?.folder ?? "—"}  ·  from ${BASE.remote}/${BASE.branch}  ·  opens a terminal`))))
+      .child(hints.pt(14))
       .when(Boolean(this.error), (el) => el.child(div().pt(10).text_size(11.5).text_color(t.ansi1).child(this.error)))
       .child(h_flex().pt(18).gap(8).items_center()
         .child(div().flex_1().text_size(11.5).text_color(t.dim).child(this.busy ?? ""))
-        .when(!panel, (el) => el.child(button("iw-cancel", "Cancel", false, () => closeOverlay(props()?.overlay))))
+        .child(button("iw-cancel", "Cancel", false, () => closeOverlay(props()?.overlay)))
         .child(button("iw-create", this.busy ? "Working…" : exists ? "Open" : "Create", true, (_e, cx) => this.create(cx))))
       .child(this.renderList(t));
   }
