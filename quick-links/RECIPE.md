@@ -69,7 +69,11 @@ folder, git remote and branch, and changes as you move between terminals.
   issue-worktree dialog with `{ cwd, remove: <top> }`).
 - Worktree toggles the layout's `worktrees` panel (`layout.select` on
   `panel-body` + `layout.show`/`layout.hide` of `panel`), highlighted in
-  `selected` while shown. A layout without that slot gets the issue-worktree
+  `selected` while shown. A badge after its label (10.5px on `accent`, like
+  the PRs count) shows how many linked worktrees the repo has (`git worktree
+  list --porcelain`, minus the main checkout and prunable ones), cached 60s per
+  folder and recounted when issue-worktree bumps `shared("issue-worktree.changed")`
+  after a create, rename or remove; none at 0. A layout without that slot gets the issue-worktree
   dialog (`openOverlay`, a dialog 460px wide) with `{ cwd }`. The key command
   `quick-links.worktrees` (from `nextCommand()`) does the same for the focused
   terminal's folder. Worktree and clean up only appear when

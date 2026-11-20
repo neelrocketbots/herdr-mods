@@ -16,7 +16,7 @@ of Herdr's top bar, plus a button that opens the folder in your editor.
 | `WEB-128` | the branch names a Linear issue and the owner is mapped in settings | opens the issue |
 | `WEB-128 · In Review`, logo in the status color | the same, with a Linear API key in the Keychain | opens the issue |
 | **Merged · clean up** | the PR merged and you're in a worktree (needs `issue-worktree`) | opens the worktrees panel (or dialog) on its Remove |
-| **Worktree** | in a GitHub repo (needs `issue-worktree`) | toggles the worktrees panel (dialog in layouts without one) |
+| **Worktree** | in a GitHub repo (needs `issue-worktree`) | toggles the worktrees panel (dialog in layouts without one); badge = the repo's worktree count |
 | editor | always, for local folders | opens the folder in your editor |
 
 CI dot: green passing, yellow running, red failing. The tooltip lists the failing

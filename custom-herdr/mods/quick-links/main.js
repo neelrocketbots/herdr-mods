@@ -43,6 +43,8 @@ const CACHE_MAX = 200;
 // Focus check: a string compare, no programs run. Work only happens on a
 // change, or every REFRESH_MS to catch a new or merged PR.
 const TICK_MS = 300;
+const WT_TTL = 60_000; // worktree counts for the Worktree badge
+const WT_CHANGED = "issue-worktree.changed"; // issue-worktree bumps it after create/rename/remove
 const REFRESH_MS = 20_000;
 const icon = (name) => `mods/quick-links/${name}.svg`;
 const PR_COLOR = { OPEN: "ansi2", MERGED: "ansi5", CLOSED: "ansi1" };
@@ -77,6 +79,7 @@ export default class QuickLinks extends View {
     this.prs = new Map();      // machine|owner/repo#branch -> { value, at }
     this.issuePrs = new Map(); // machine|owner#ISSUE-ID -> { value: [pr], at }: open PRs naming the issue, any repo
     this.trees = new Map();    // machine|cwd -> { top, linked }: is it a worktree (not the main checkout)
+    this.wtCounts = new Map(); // machine|cwd -> { value: linked worktrees in its repo, at }
     this.statuses = new Map(); // ISSUE-ID -> { value: { id, title, url, state, type, color } | null, at }
     this.noKeyAt = 0;        // when Linear last had no key (or refused it)
     this.inflight = new Map(); // same keys -> Promise, so one lookup per key
@@ -184,6 +187,8 @@ export default class QuickLinks extends View {
     const ctx = this.context();
     if (ctx === undefined) return;
     const key = ctx ? `${ctx.machine ?? ""}|${ctx.cwd}|${ctx.branch ?? ""}` : "";
+    const changed = shared(WT_CHANGED) ?? 0;
+    if (changed !== this.wtSeen) { this.wtSeen = changed; this.wtCounts.clear(); this.at = 0; }
     const now = Date.now();
     if (key === this.key && now - this.at < REFRESH_MS) return;
     this.key = key;
@@ -198,6 +203,14 @@ export default class QuickLinks extends View {
       const branch = ctx.branch ?? await output("git", ["branch", "--show-current"], ctx, 5000);
       if (gen !== this.gen) return;
       this.apply(this.build(ctx, branch), cx);
+      // The Worktree button's badge: how many linked worktrees the repo has.
+      if (!ctx.machine && this.repos.get(repoKey)?.value && !this.fresh(this.wtCounts.get(repoKey), WT_TTL)) {
+        const out = await output("git", ["worktree", "list", "--porcelain"], ctx, 5000);
+        if (gen !== this.gen) return;
+        const n = out == null ? null : out.trim().split(/\n\n+/).slice(1).filter((b) => !/^(bare|prunable)/m.test(b)).length;
+        this.wtCounts.set(repoKey, { value: n, at: Date.now() });
+        this.apply(this.build(ctx, branch), cx);
+      }
       const repo = this.repos.get(repoKey)?.value;
       if (!repo || !branch || BASE_BRANCHES.has(branch)) return;
       const linear = this.slug(repo) ? linearId(branch) : null;
@@ -318,7 +331,7 @@ export default class QuickLinks extends View {
   build(ctx, branch) {
     const web = this.webLinks(ctx, branch);
     if (ctx.machine) return web;
-    const worktree = web.length && this.installed["issue-worktree"] ? [{ id: "worktree", icon: "worktree", label: "Worktree", dialog: "issue-worktree", cwd: ctx.cwd, tip: "New worktree, or open an existing one" }] : [];
+    const worktree = web.length && this.installed["issue-worktree"] ? [{ id: "worktree", icon: "worktree", label: "Worktree", dialog: "issue-worktree", cwd: ctx.cwd, badge: this.wtCounts.get(this.repoKey(ctx))?.value ?? null, tip: "New worktree, or open an existing one" }] : [];
     return [...web, ...worktree, { id: "editor", icon: "editor", label: this.editor, path: ctx.cwd, tip: `Open ${ctx.cwd} in ${this.editor}` }];
   }
 
@@ -423,7 +436,8 @@ export default class QuickLinks extends View {
       .tooltip(l.tip)
       .child(svg(icon(l.icon)).size(14).text_color(!l.color ? t.muted : l.color.startsWith("#") ? l.color : t[l.color]))
       .child(div().max_w(160).truncate().child(l.label))
-      .when(Boolean(l.dot), (el) => el.child(div().size(6).rounded(3).flex_none().bg(t[l.dot])));
+      .when(Boolean(l.dot), (el) => el.child(div().size(6).rounded(3).flex_none().bg(t[l.dot])))
+      .when(l.badge > 0, (el) => el.child(div().px(5).rounded(8).text_size(10.5).bg(t.accent).text_color(t.background).child(String(l.badge))));
     // PRs: toggles the pr-inbox panel (the layout's panel-body child "prs"),
     // with how many PRs wait on your review once that panel has loaded.
     const find = (n, id) => !n || typeof n !== "object" ? null : n.id === id ? n : (n.children ?? []).reduce((f, c) => f ?? find(c, id), null);

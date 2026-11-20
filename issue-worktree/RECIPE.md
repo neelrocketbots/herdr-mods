@@ -11,13 +11,19 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 
 ## What you see
 
-- Panel: fills the side panel on `background` with a 1px `border`, 10px
-  corners and 14px padding. Title "Worktrees" 13.5px semibold, then the repo's
-  folder name in 11.5px `dim`; the field's label reads "New worktree"; no Cancel
-  button; the list takes the remaining height. It follows the focused
-  terminal's folder while shown (same repo: reload; another repo: start over),
-  reloads when shown again after 60s, and focuses the name field on showing.
-  Creating clears the field and reloads instead of closing.
+- Panel: sized like the PRs panel. Fills the side panel on `background` with
+  a 1px `border`, 10px corners and 13px text. A 42px header (14px sides,
+  `border` below): "Worktrees" semibold, then the repo's folder name in 11px
+  `dim`. Then a form block (14px sides, 10px top and bottom, `border` below):
+  a 30px input (7px corners, `accent` border, 12px text) with a 30px "Create"
+  button on `solid` beside it, the two hint lines, then busy/error lines, all
+  11.5px. "Existing worktrees" (11.5px `dim`) and the list (6px padding) take
+  the rest; rows have 10px sides, 7px top and bottom, 3px between lines. It
+  follows the focused terminal's folder while shown (same repo: reload;
+  another repo: start over), reloads when shown again after 60s, and focuses
+  the name field on showing. Creating clears the field and reloads instead of
+  closing. On start it adds `"worktrees"` to `shared("workspace.panels")`, so
+  Herdr's tab bar remembers it per space like Files, Changes and PRs.
 - Dialog: 460px wide on the theme's `popover`, with 18px padding. The title
   "New worktree" is 15px semibold, with "Esc" in 11px `dim` on the right.
 - "Worktree name" (11.5px `dim`), then a 36px input with 9px corners, a 1px
@@ -33,7 +39,13 @@ with its pull request and CI, an open-in-editor button, rename and remove.
   busy, at 0.6 opacity).
 - A 1px `border` line, then "Existing worktrees" with a count (`8`, or `3/8`
   when filtered).
-- Rows of at least 44px with 7px corners. Line one: the folder (its path under
+- Rows of at least 44px with 7px corners; the row whose space is the one shown
+  now sits on `selected`.
+- Work on a row (checking before Remove, removing, renaming) shows on that
+  row: it dims to 70%, ignores clicks, and its editor/rename/remove give way to
+  a 12px ring spinner (`spinner.svg`, `.spin(900)`, `working`) with "Checking…",
+  "Removing…" or "Renaming…" in 11px `muted`. Creating shows the same spinner
+  with its step ("Fetching origin/master…", "Creating …") under the form. Line one: the folder (its path under
   `.worktrees/`, e.g. `HOT-3086` or `FRONT-504/web`, else the folder's name),
   a PR chip (`#482 open`, `#479 draft`, `#465 merged`; 11px, tinted `ansi2`,
   `ansi5`, `ansi1`, or `dim` for drafts) with a 6px CI dot on open PRs, then
