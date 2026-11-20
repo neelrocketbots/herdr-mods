@@ -64,10 +64,15 @@ folder, git remote and branch, and changes as you move between terminals.
   stay fresh for 5 minutes.
 - Clean up: once a PR shows as merged, `git rev-parse --show-toplevel --git-dir
   --git-common-dir` decides whether the folder is a linked worktree. If it is,
-  the chip opens the issue-worktree dialog with `{ cwd, remove: <top> }`, which
-  goes straight to that row's Remove.
-- Worktree opens the issue-worktree dialog (`openOverlay`, a dialog 460px wide)
-  with `{ cwd }`. Worktree and clean up only appear when
+  the chip sets `shared("issue-worktree.remove")` to `<top>` and shows the
+  worktrees panel, which goes straight to that row's Remove (no panel slot: the
+  issue-worktree dialog with `{ cwd, remove: <top> }`).
+- Worktree toggles the layout's `worktrees` panel (`layout.select` on
+  `panel-body` + `layout.show`/`layout.hide` of `panel`), highlighted in
+  `selected` while shown. A layout without that slot gets the issue-worktree
+  dialog (`openOverlay`, a dialog 460px wide) with `{ cwd }`. The key command
+  `quick-links.worktrees` (from `nextCommand()`) does the same for the focused
+  terminal's folder. Worktree and clean up only appear when
   `mods/issue-worktree/mod.json` exists. They are local only: nothing for
   spaces on other machines.
 - PRs: in a layout with the `prs` slot it toggles the panel (`layout.select` on
@@ -127,7 +132,7 @@ folder, git remote and branch, and changes as you move between terminals.
 - Clicking the PR while its CI fails opens the failing Actions run.
 - On a branch with no PR here, an open PR in another repo whose body says
   `WEB-140` shows as `<repo>#<n>`.
-- On a worktree whose PR is merged, "Merged · clean up" opens the dialog on
-  that worktree's Remove.
+- On a worktree whose PR is merged, "Merged · clean up" opens the worktrees
+  panel on that worktree's Remove.
 - Changing `editor` in `herdr-mods.json` relabels the editor button within 5s.
 - After a restart, the links show before any `gh` call returns.

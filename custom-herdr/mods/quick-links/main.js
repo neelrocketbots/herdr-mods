@@ -6,7 +6,7 @@
 // dialog on its Remove. The PR button carries a CI dot (click while failing opens the failing run).
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { exec, focused, panes, spaces, run, theme, window, checking, props, notify, openOverlay, layout, shared, setShared, readTextFile, appHome } from "herdr";
+import { exec, focused, panes, spaces, run, theme, window, checking, props, notify, openOverlay, layout, shared, setShared, readTextFile, appHome, nextCommand } from "herdr";
 import { ciSummary, CI_COLOR, CI_WORD } from "./ci.js";
 import { readSettings, editorOf, openInEditor, SETTINGS } from "./editor.js";
 import { linearId, issueStatus, NoLinearKey, STATUS_COLOR } from "./linear.js";
@@ -97,6 +97,15 @@ export default class QuickLinks extends View {
     cx.timer.every(SETTINGS_MS, (cx) => this.loadSettings(cx));
     cx.timer.every(TICK_MS, (cx) => this.tick(cx));
     this.tick(cx);
+    // Key commands: "quick-links.worktrees" (cmd-alt-n in custom-herdr) does
+    // what the Worktree button does, for the focused terminal's folder.
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const c = await nextCommand();
+        if (c === "worktrees") this.activate({ dialog: "issue-worktree", cwd: focused()?.cwd ?? undefined });
+        cx.notify();
+      }
+    });
   }
 
   // Settings, and which companion mods are installed: the Worktree and
@@ -304,7 +313,8 @@ export default class QuickLinks extends View {
 
   // The web links, then an editor button for the focused terminal's folder
   // (this computer only: a local editor can't open another machine's folder).
-  // In a repo, a Worktree button opens the issue-worktree dialog.
+  // In a repo, a Worktree button toggles the worktrees panel (or opens the
+  // issue-worktree dialog in layouts without one).
   build(ctx, branch) {
     const web = this.webLinks(ctx, branch);
     if (ctx.machine) return web;
@@ -312,8 +322,28 @@ export default class QuickLinks extends View {
     return [...web, ...worktree, { id: "editor", icon: "editor", label: this.editor, path: ctx.cwd, tip: `Open ${ctx.cwd} in ${this.editor}` }];
   }
 
+  // The layout's side-panel slot `id` (a panel-body child): { has, on }.
+  slot(id) {
+    const find = (n, k) => !n || typeof n !== "object" ? null : n.id === k ? n : (n.children ?? []).reduce((f, c) => f ?? find(c, k), null);
+    const root = layout(), panel = find(root, "panel"), body = find(root, "panel-body");
+    const has = Boolean(body?.children?.some((c) => c.id === id));
+    return { has, on: has && Boolean(panel) && !panel.hidden && body.active === id };
+  }
+
+  // Show (or with toggle, hide again) the side panel on slot `id`.
+  showSlot(id, toggle) {
+    if (toggle && this.slot(id).on) { run("layout.hide", { id: "panel" }); return; }
+    run("layout.select", { stack: "panel-body", child: id });
+    run("layout.show", { id: "panel" });
+  }
+
   activate(l) {
-    if (l.dialog) openOverlay({ mod: l.dialog, kind: "dialog", width: 460, props: { cwd: l.cwd, remove: l.remove } });
+    // Worktrees: the layout's "worktrees" panel when it has one (cleanup
+    // hands it the row to remove), else the dialog.
+    if (l.dialog === "issue-worktree" && this.slot("worktrees").has) {
+      if (l.remove) { setShared("issue-worktree.remove", l.remove); this.showSlot("worktrees", false); }
+      else this.showSlot("worktrees", true);
+    } else if (l.dialog) openOverlay({ mod: l.dialog, kind: "dialog", width: 460, props: { cwd: l.cwd, remove: l.remove } });
     else if (l.path) openInEditor(l.path);
     else openUrl(l.url);
   }
@@ -384,8 +414,10 @@ export default class QuickLinks extends View {
   render() {
     const t = theme();
     const stop = (_e, cx) => cx.stop_propagation();
+    const wtOn = this.slot("worktrees").on;
     const button = (l) => h_flex().id(`ql-${l.id}`).h(26).px(8).gap(5).flex_none().items_center().rounded(6)
       .text_size(12).text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .when(l.id === "worktree" && wtOn, (el) => el.bg(t.selected).text_color(t.foreground))
       .on_mouse_down("left", stop)
       .on_click(() => this.activate(l))
       .tooltip(l.tip)

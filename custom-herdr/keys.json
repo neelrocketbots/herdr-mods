@@ -2,5 +2,8 @@
   "global": {
     "cmd-alt-n": "mod.open:issue-worktree",
     "cmd-alt-p": "mod.open:pr-inbox"
+  },
+  "layout:custom-herdr": {
+    "cmd-alt-n": "quick-links.worktrees"
   }
 }

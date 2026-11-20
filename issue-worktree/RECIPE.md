@@ -1,6 +1,7 @@
 # Issue worktree
 
-A dialog for working one git worktree per issue. You type a name (usually a
+A side panel, or a dialog in layouts without a slot for it, for working one
+git worktree per issue. You type a name (usually a
 Linear ID such as `WEB-140`), and it creates `<repo>/.worktrees/WEB-140` on a
 branch of the same name from a fresh `origin/master`, then opens a space there
 with a terminal. Below the form it lists the repo's existing worktrees, each
@@ -10,7 +11,14 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 
 ## What you see
 
-- A dialog 460px wide on the theme's `popover`, with 18px padding. The title
+- Panel: fills the side panel on `background` with a 1px `border`, 10px
+  corners and 14px padding. Title "Worktrees" 13.5px semibold, then the repo's
+  folder name in 11.5px `dim`; the field's label reads "New worktree"; no Cancel
+  button; the list takes the remaining height. It follows the focused
+  terminal's folder while shown (same repo: reload; another repo: start over),
+  reloads when shown again after 60s, and focuses the name field on showing.
+  Creating clears the field and reloads instead of closing.
+- Dialog: 460px wide on the theme's `popover`, with 18px padding. The title
   "New worktree" is 15px semibold, with "Esc" in 11px `dim` on the right.
 - "Worktree name" (11.5px `dim`), then a 36px input with 9px corners, a 1px
   `accent` border on `background`, and 12.8px text. Placeholder:
@@ -25,15 +33,17 @@ with its pull request and CI, an open-in-editor button, rename and remove.
   busy, at 0.6 opacity).
 - A 1px `border` line, then "Existing worktrees" with a count (`8`, or `3/8`
   when filtered).
-- Rows of at least 44px with 7px corners. Line one: the branch (or "detached"),
+- Rows of at least 44px with 7px corners. Line one: the folder (its path under
+  `.worktrees/`, e.g. `HOT-3086` or `FRONT-504/web`, else the folder's name),
   a PR chip (`#482 open`, `#479 draft`, `#465 merged`; 11px, tinted `ansi2`,
   `ansi5`, `ansi1`, or `dim` for drafts) with a 6px CI dot on open PRs, then
   the Linear status chip (12px Linear icon in the status's color, then e.g. "In Review",
   11px `muted`; tooltip "<ID>: <title>", click opens the issue), then
   "open" in `accent` when a space shows it, else how long since its last commit
   (`5m`, `3h`, `2d`, `1mo`), then a 13px editor icon, "rename" and "remove"
-  (11px `dim`; remove turns `ansi1` on hover). Line two: the path with `~` for
-  home, 11.5px `dim`.
+  (11px `dim`; remove turns `ansi1` on hover). Line two, 11.5px `dim`: the
+  branch (or "detached") and `  ·  ` unless the branch equals line one, then
+  the path with `~` for home.
 - The list is as tall as its rows (56px each, plus 120 for a row being renamed
   and 36 for one confirming removal), at most 320px, then it scrolls with a
   scrollbar.
@@ -54,11 +64,14 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 - Linear status: the branch's issue ID (`linear.js`, shared with quick-links),
   one request for all rows, cached 60s in module scope. No API key: no chip,
   asked again after 60s.
-- Typing filters the rows by branch and path. Enter or Create: names must match
-  `^[A-Za-z0-9][A-Za-z0-9._-]*$`, not end in `.lock` and not contain `..`. An
-  existing folder just opens. Otherwise it runs `git fetch origin master`
+- Typing filters the rows by branch and path. Enter or Create: the name splits on
+  `/`; every part must match `^[A-Za-z0-9][A-Za-z0-9._-]*$` and not end in
+  `.lock`, and the name must not contain `..`. The whole name is the branch, the
+  last part the folder (`hotfix/WEB-140` -> `.worktrees/WEB-140`); the two
+  hint lines show both. An existing folder just opens. Otherwise it checks
+  `git check-ref-format --branch`, runs `git fetch origin master`
   (2-minute limit), adds `.worktrees/` to `.git/info/exclude` when the repo
-  doesn't ignore it, runs `git worktree add -b <name> <dir> origin/master`,
+  doesn't ignore it, runs `git worktree add -b <branch> <dir> origin/master`,
   closes and runs `space.new { folder }`.
 - Clicking a row goes to the space showing that folder (`space.select`), else
   runs `space.new` there. The space is the one whose first terminal is inside
@@ -70,6 +83,9 @@ with its pull request and CI, an open-in-editor button, rename and remove.
   "Uncommitted changes will be lost. Remove anyway?". Confirming closes the
   space (`space.close` confirmed), runs `git worktree remove` (`--force` when
   dirty) and `git branch -D`. A failed branch delete becomes a warning toast.
+  After a remove or move, `rmdir` walks up from the old folder's parent while
+  it's inside `.worktrees/` (not `.worktrees/` itself), stopping at the first
+  folder that isn't empty.
   Opening with `{ remove: <path> }` goes straight to that row's confirmation.
 - Rename: an inline input prefilled with the branch, and a checkbox "Also move
   the folder to .worktrees/<last part of the name>" (with "closes and reopens
@@ -82,8 +98,12 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 
 ## Built from
 
-- An overlay mod: `mod.json` overlay `{ kind: "dialog", width: 460 }`, `props`
-  `cwd` and `remove`. `keys.json` binds `cmd-alt-n`.
+- A layout block (`panel-body` child `worktrees`; panel mode is "no
+  `props().overlay`", shown when the panel is visible with `active:
+  "worktrees"`) or an overlay: `mod.json` overlay `{ kind: "dialog", width: 460 }`,
+  `props` `cwd` and `remove`. `keys.json` binds `cmd-alt-n` (dialog). The panel
+  takes a pending Remove from `shared("issue-worktree.remove")` (a worktree
+  path), clearing it once that row is found.
 - herdr: `exec`, `run` (`space.new`, `space.select`, `space.close`), `props`,
   `closeOverlay`, `focused`, `spaces`, `panes`, `home`, `notify`, `shared`
   (`herdr-mods.editor` for the tooltip), `theme`, `checking`; gpui-base
