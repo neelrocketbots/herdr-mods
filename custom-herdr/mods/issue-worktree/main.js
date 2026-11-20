@@ -188,7 +188,12 @@ export default class IssueWorktree extends View {
     this.renameInput.on("submit", (_e, cx) => this.rename(cx));
     if (checking()) return;
     cx.spawn(async (cx) => { this.editor = await editorName(); cx.notify(); });
-    if (this.panel()) return; // render() follows the focused terminal while shown
+    if (this.panel()) {
+      // Let the tab bar keep this panel per space like Files, Changes and PRs.
+      const panels = shared("workspace.panels") ?? ["files", "changes"];
+      if (!panels.includes("worktrees")) setShared("workspace.panels", [...panels, "worktrees"]);
+      return; // render() follows the focused terminal while shown
+    }
     this.issueInput.focus();
     cx.timer.after(600, () => this.issueInput.focus());
     this.follow(props()?.cwd ?? focused()?.cwd, cx);

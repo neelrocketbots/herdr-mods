@@ -22,7 +22,8 @@ with its pull request and CI, an open-in-editor button, rename and remove.
   follows the focused terminal's folder while shown (same repo: reload;
   another repo: start over), reloads when shown again after 60s, and focuses
   the name field on showing. Creating clears the field and reloads instead of
-  closing.
+  closing. On start it adds `"worktrees"` to `shared("workspace.panels")`, so
+  Herdr's tab bar remembers it per space like Files, Changes and PRs.
 - Dialog: 460px wide on the theme's `popover`, with 18px padding. The title
   "New worktree" is 15px semibold, with "Esc" in 11px `dim` on the right.
 - "Worktree name" (11.5px `dim`), then a 36px input with 9px corners, a 1px
