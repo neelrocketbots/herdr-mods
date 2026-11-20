@@ -72,7 +72,11 @@ folder, git remote and branch, and changes as you move between terminals.
   `selected` while shown. A layout without that slot gets the issue-worktree
   dialog (`openOverlay`, a dialog 460px wide) with `{ cwd }`. The key command
   `quick-links.worktrees` (from `nextCommand()`) does the same for the focused
-  terminal's folder. Worktree and clean up only appear when
+  terminal's folder.
+- The worktrees panel stays open across space switches: Herdr's tabs mod
+  restores each space's panel but only knows `workspace.panels` (files,
+  changes), so it hides this one. When it was shown before a switch, quick-links
+  shows it again during the next second (the tabs mod acts only on the switch). Worktree and clean up only appear when
   `mods/issue-worktree/mod.json` exists. They are local only: nothing for
   spaces on other machines.
 - PRs: in a layout with the `prs` slot it toggles the panel (`layout.select` on
