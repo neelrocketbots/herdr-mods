@@ -40,7 +40,12 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 - A 1px `border` line, then "Existing worktrees" with a count (`8`, or `3/8`
   when filtered).
 - Rows of at least 44px with 7px corners; the row whose space is the one shown
-  now sits on `selected`. Line one: the folder (its path under
+  now sits on `selected`.
+- Work on a row (checking before Remove, removing, renaming) shows on that
+  row: it dims to 70%, ignores clicks, and its editor/rename/remove give way to
+  a 12px ring spinner (`spinner.svg`, `.spin(900)`, `working`) with "Checking…",
+  "Removing…" or "Renaming…" in 11px `muted`. Creating shows the same spinner
+  with its step ("Fetching origin/master…", "Creating …") under the form. Line one: the folder (its path under
   `.worktrees/`, e.g. `HOT-3086` or `FRONT-504/web`, else the folder's name),
   a PR chip (`#482 open`, `#479 draft`, `#465 merged`; 11px, tinted `ansi2`,
   `ansi5`, `ansi1`, or `dim` for drafts) with a 6px CI dot on open PRs, then

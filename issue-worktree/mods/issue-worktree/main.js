@@ -168,6 +168,7 @@ export default class IssueWorktree extends View {
   init(_props, cx) {
     this.issue = "";
     this.busy = null;   // what it's doing now, or null
+    this.busyPath = null; // the worktree row it's working on (rename, remove), or null
     this.error = null;
     this.repo = null;   // { gitDir, root } once found
     this.list = undefined;
@@ -319,7 +320,7 @@ export default class IssueWorktree extends View {
     const dir = `${this.repo.root}/.worktrees/${folder}`;
     const branchChanges = Boolean(r.branch) && name !== r.branch, moves = r.move && dir !== r.path;
     if (!branchChanges && !moves) { this.renaming = null; cx.notify(); return; }
-    this.busy = "Renaming…"; this.error = null; cx.notify();
+    this.busy = "Renaming…"; this.busyPath = r.path; this.error = null; cx.notify();
     cx.spawn(async (cx) => {
       try {
         if (branchChanges) {
@@ -338,10 +339,10 @@ export default class IssueWorktree extends View {
           if (s) run("space.new", { folder: dir });
         }
         this.renaming = null;
-        this.busy = null;
+        this.busy = null; this.busyPath = null;
         await this.reload(cx, true);
       } catch (e) {
-        this.busy = null;
+        this.busy = null; this.busyPath = null;
         this.error = String(e?.message ?? e);
         cx.notify();
         await this.reload(cx).catch(() => {});
@@ -350,9 +351,14 @@ export default class IssueWorktree extends View {
   }
 
   askRemove(c, cx) {
+    if (this.busy) return;
     this.renaming = null;
+    // git status and lsof can take a moment: show it on the row meanwhile.
+    this.busy = "Checking…"; this.busyPath = c.path;
+    cx.notify();
     cx.spawn(async (cx) => {
       const [status, running] = await Promise.all([git(["status", "--porcelain"], c.path), runningIn(c.path)]);
+      this.busy = null; this.busyPath = null;
       this.confirm = { path: c.path, dirty: status.code !== 0 || status.stdout.trim() !== "", running };
       cx.notify();
     });
@@ -362,7 +368,7 @@ export default class IssueWorktree extends View {
   remove(c, cx) {
     const dirty = this.confirm?.dirty;
     this.confirm = null;
-    this.busy = `Removing ${c.branch ?? c.path}…`;
+    this.busy = "Removing…"; this.busyPath = c.path;
     cx.notify();
     cx.spawn(async (cx) => {
       try {
@@ -387,10 +393,10 @@ export default class IssueWorktree extends View {
           const br = await git(["branch", "-D", c.branch], this.repo.root);
           if (br.code !== 0) notify({ title: "Worktree removed, branch kept", body: br.stderr.trim(), level: "warning" });
         }
-        this.busy = null;
+        this.busy = null; this.busyPath = null;
         await this.reload(cx, true);
       } catch (e) {
-        this.busy = null;
+        this.busy = null; this.busyPath = null;
         this.error = String(e?.message ?? e);
         cx.notify();
       }
@@ -410,6 +416,7 @@ export default class IssueWorktree extends View {
 
   // Go to the worktree's space, or open one there with a terminal.
   open(path) {
+    if (this.busyPath === path) return;
     const s = spaceOf(path, this.list ?? []);
     if (!this.panel()) closeOverlay(props()?.overlay);
     if (s) run("space.select", { id: s.id });
@@ -445,11 +452,11 @@ export default class IssueWorktree extends View {
 
         if (!this.panel()) closeOverlay(props()?.overlay);
         setShared("issue-worktree.changed", Date.now());
-        this.busy = null; this.issue = ""; this.issueInput.set_value("");
+        this.busy = null; this.busyPath = null; this.issue = ""; this.issueInput.set_value("");
         run("space.new", { folder: dir });
         if (this.panel()) await this.reload(cx, true);
       } catch (e) {
-        this.busy = null;
+        this.busy = null; this.busyPath = null;
         this.error = String(e?.message ?? e);
         cx.notify();
       }
@@ -471,11 +478,12 @@ export default class IssueWorktree extends View {
       // Title: the folder (short, unique); the branch goes under it when it says more.
       const label = folderLabel(c.path, this.repo?.root ?? ""), branchNote = c.branch === label ? null : (c.branch ?? "detached");
       // The worktree whose space is the one shown now.
-      const current = Boolean(there?.active);
+      const current = Boolean(there?.active), working = this.busyPath === c.path;
       return v_flex().id(`iw-wt-${i}`).flex_none().px(10).justify_center().rounded(7).cursor_pointer()
         .when(panel, (el) => el.py(7).gap(3)).when(!panel, (el) => el.min_h(44).py(5))
         .when(current && !confirming && !renaming, (el) => el.bg(t.selected))
         .when(confirming || Boolean(renaming), (el) => el.bg(t.raised)).when(!confirming && !renaming, (el) => el.hover((s) => s.bg(t.hover)))
+        .when(working, (el) => el.opacity(0.7))
         .on_click(() => this.open(c.path))
         .child(h_flex().gap(6).items_center()
           .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(label))
@@ -495,9 +503,12 @@ export default class IssueWorktree extends View {
           .when(!there && c.at > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(ago(c.at)))))
         .child(h_flex().gap(2).items_center()
           .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(branchNote ? `${branchNote}  ·  ${tilde(c.path)}` : tilde(c.path)))
-          .child(action(`iw-editor-${i}`, svg("mods/issue-worktree/editor.svg").size(13), () => this.openEditor(c.path)).tooltip(`Open in ${shared("herdr-mods.editor") ?? this.editor}`))
-          .child(action(`iw-rn-${i}`, "rename", (cx) => this.startRename(c, cx)))
-          .child(action(`iw-rm-${i}`, "remove", (cx) => this.askRemove(c, cx), t.ansi1)))
+          .when(working, (el) => el.child(h_flex().flex_none().gap(5).items_center().px(5).text_size(11).text_color(t.muted)
+            .child(svg("mods/issue-worktree/spinner.svg").size(12).text_color(t.working ?? t.accent).spin(900)).child(this.busy ?? "Working…")))
+          .when(!working, (el) => el
+            .child(action(`iw-editor-${i}`, svg("mods/issue-worktree/editor.svg").size(13), () => this.openEditor(c.path)).tooltip(`Open in ${shared("herdr-mods.editor") ?? this.editor}`))
+            .child(action(`iw-rn-${i}`, "rename", (cx) => this.startRename(c, cx)))
+            .child(action(`iw-rm-${i}`, "remove", (cx) => this.askRemove(c, cx), t.ansi1))))
         .when(confirming, (el) => el.child(h_flex().pt(6).gap(6).items_center()
           .child(div().flex_1().min_w(0).text_size(11.5).text_color(this.confirm.dirty || this.confirm.running?.length ? t.ansi1 : t.muted)
             .child((this.confirm.running?.length ? `Still running in it: ${this.confirm.running.join(", ")}. Stop them first. ` : "") +
@@ -559,6 +570,8 @@ export default class IssueWorktree extends View {
       .child(div().truncate().child(exists ? `.worktrees/${name.folder} already exists · Enter opens it` : `Branch  ${name?.branch ?? "—"}`))
       .when(!exists, (el) => el.child(div().truncate().child(`Folder  .worktrees/${name?.folder ?? "—"}  ·  from ${BASE.remote}/${BASE.branch}  ·  opens a terminal`)));
 
+    const busyLine = h_flex().gap(6).items_center().text_size(11.5).text_color(t.muted)
+      .child(svg("mods/issue-worktree/spinner.svg").size(12).text_color(t.working ?? t.accent).spin(900)).child(this.busy ?? "");
     if (panel) {
       // Sized like the PRs panel: 13px text, a 42px header, 11.5px secondary lines.
       return v_flex().id("issue-worktree").track_focus(this.handle).size_full().min_h(0).rounded(10).overflow_hidden()
@@ -575,7 +588,7 @@ export default class IssueWorktree extends View {
               .when(Boolean(this.busy), (el) => el.opacity(0.6)).hover((s) => s.opacity(0.88))
               .on_click((_e, cx) => this.create(cx)).child(this.busy ? "Working…" : exists ? "Open" : "Create")))
           .child(hints)
-          .when(Boolean(this.busy), (el) => el.child(div().text_size(11.5).text_color(t.dim).child(this.busy)))
+          .when(Boolean(this.busy) && !this.busyPath, (el) => el.child(busyLine))
           .when(Boolean(this.error), (el) => el.child(div().text_size(11.5).text_color(t.ansi1).child(this.error))))
         .child(this.renderList(t));
     }
@@ -590,7 +603,7 @@ export default class IssueWorktree extends View {
       .child(hints.pt(14))
       .when(Boolean(this.error), (el) => el.child(div().pt(10).text_size(11.5).text_color(t.ansi1).child(this.error)))
       .child(h_flex().pt(18).gap(8).items_center()
-        .child(div().flex_1().text_size(11.5).text_color(t.dim).child(this.busy ?? ""))
+        .child(div().flex_1().when(Boolean(this.busy) && !this.busyPath, (el) => el.child(busyLine)))
         .child(button("iw-cancel", "Cancel", false, () => closeOverlay(props()?.overlay)))
         .child(button("iw-create", this.busy ? "Working…" : exists ? "Open" : "Create", true, (_e, cx) => this.create(cx))))
       .child(this.renderList(t));
