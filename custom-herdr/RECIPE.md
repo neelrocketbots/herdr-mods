@@ -37,8 +37,8 @@ stay on the left as in Herdr's default window.
   remembered too.
 - The quick-links block grows and shrinks with its buttons as you move between
   terminals.
-- `cmd-alt-n` opens the Worktree dialog and `cmd-alt-p` the PR inbox as a
-  dialog (keys.json).
+- `cmd-alt-n` toggles the Worktrees panel and `cmd-alt-p` opens the PR inbox
+  as a dialog (keys.json).
 - Settings for all the mods are in `~/.config/herdr-app/herdr-mods.json`:
   `editor` and `linear`.
 
@@ -61,7 +61,9 @@ stay on the left as in Herdr's default window.
   `changes-editor` (in `mods/`), plus Herdr's shipped `workspace-chrome`,
   `spaces`, `agents`, `tabs`, `pane` and `workspace-status`.
 - `keys.json`: `cmd-alt-n` → `mod.open:issue-worktree`, `cmd-alt-p` →
-  `mod.open:pr-inbox`.
+  `mod.open:pr-inbox` (global), and in section `layout:custom-herdr`
+  `cmd-alt-n` → `quick-links.worktrees`, which quick-links' `nextCommand()`
+  loop treats like a Worktree button click.
 
 ## Watch out
 
@@ -81,5 +83,5 @@ stay on the left as in Herdr's default window.
   the right, the panes, and the status bar.
 - Files, Changes and PRs each open the side panel on their view and close it on
   a second click.
-- `cmd-alt-n` opens the Worktree dialog for the focused terminal's repo.
+- `cmd-alt-n` toggles the Worktrees panel, showing the focused terminal's repo.
 - The preview in Settings shows the layout's picture instead of a blank frame.

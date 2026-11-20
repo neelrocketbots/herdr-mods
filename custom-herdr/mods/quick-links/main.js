@@ -6,7 +6,7 @@
 // dialog on its Remove. The PR button carries a CI dot (click while failing opens the failing run).
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { exec, focused, panes, spaces, run, theme, window, checking, props, notify, openOverlay, layout, shared, setShared, readTextFile, appHome } from "herdr";
+import { exec, focused, panes, spaces, run, theme, window, checking, props, notify, openOverlay, layout, shared, setShared, readTextFile, appHome, nextCommand } from "herdr";
 import { ciSummary, CI_COLOR, CI_WORD } from "./ci.js";
 import { readSettings, editorOf, openInEditor, SETTINGS } from "./editor.js";
 import { linearId, issueStatus, NoLinearKey, STATUS_COLOR } from "./linear.js";
@@ -97,6 +97,15 @@ export default class QuickLinks extends View {
     cx.timer.every(SETTINGS_MS, (cx) => this.loadSettings(cx));
     cx.timer.every(TICK_MS, (cx) => this.tick(cx));
     this.tick(cx);
+    // Key commands: "quick-links.worktrees" (cmd-alt-n in custom-herdr) does
+    // what the Worktree button does, for the focused terminal's folder.
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const c = await nextCommand();
+        if (c === "worktrees") this.activate({ dialog: "issue-worktree", cwd: focused()?.cwd ?? undefined });
+        cx.notify();
+      }
+    });
   }
 
   // Settings, and which companion mods are installed: the Worktree and

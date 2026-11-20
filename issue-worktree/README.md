@@ -34,8 +34,8 @@ its PR and CI, ready to open, rename or remove.
 
 As a panel (the layout's `panel-body` child `worktrees`, next to Files, Changes
 and PRs) it follows the focused terminal's repo and stays open while you work;
-the quick-links Worktree button toggles it. Without that slot, the button and
-⌘⌥N open it as a dialog.
+the quick-links Worktree button (and ⌘⌥N in custom-herdr) toggles it. Without
+that slot, the button and ⌘⌥N open it as a dialog.
 
 All worktrees' PRs come from one GitHub request, and their Linear statuses from
 one Linear request, both remembered for a minute between opens.

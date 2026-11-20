@@ -17,7 +17,7 @@ the worktree dialog and the PR inbox.
 - `layouts/custom-herdr.svg`: its picture in Settings.
 - A `usage` block (`usage-limits`) above the sidebar footer.
 - `mods/`: copies of all six mods, so the layout installs on its own.
-- `keys.json`: **⌘⌥N** worktree dialog, **⌘⌥P** PR inbox.
+- `keys.json`: **⌘⌥N** worktrees panel (in this layout; the dialog elsewhere), **⌘⌥P** PR inbox.
 
 ## Install
 
