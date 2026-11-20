@@ -11,6 +11,9 @@ import { ciSummary, CI_COLOR, CI_WORD } from "./ci.js";
 import { readSettings, editorOf, openInEditor, SETTINGS } from "./editor.js";
 import { linearId, issueStatus, NoLinearKey, STATUS_COLOR } from "./linear.js";
 
+// Side panels kept open across space switches (see keepPanels).
+const STICKY = ["worktrees", "prs"];
+
 // Settings come from herdr-mods.json in the app folder (see editor.js),
 // re-read every SETTINGS_MS. `linear` maps a GitHub owner to its Linear
 // workspace slug, "*" for any owner. Linear links and issue-PR lookups only
@@ -337,22 +340,23 @@ export default class QuickLinks extends View {
     run("layout.show", { id: "panel" });
   }
 
-  // Keep the worktrees panel open across space switches. Herdr's tabs mod
-  // restores each space's panel on a switch, but only panels it knows
-  // (workspace.panels: files, changes), so it hides this one. When it was
+  // Keep the worktrees and PRs panels open across space switches. Herdr's
+  // tabs mod restores each space's panel on a switch, but only panels it
+  // knows (workspace.panels: files, changes), so it hides these. When one was
   // shown before the switch, show it again for a second after; the tabs mod
-  // doesn't hide twice (it only acts on the switch itself).
-  keepWorktrees() {
-    const space = spaces().find((s) => s.active)?.id, on = this.slot("worktrees").on, now = Date.now();
+  // doesn't act twice (only on the switch itself).
+  keepPanels() {
+    const space = spaces().find((s) => s.active)?.id, now = Date.now();
+    const shownId = STICKY.find((id) => this.slot(id).on) ?? null;
     if (space !== this.space) {
-      if (this.space !== undefined && this.wtOn) this.wtKeepUntil = now + 1000;
+      if (this.space !== undefined && this.sticky) this.keepUntil = now + 1000;
       this.space = space;
     }
-    if (now < (this.wtKeepUntil ?? 0)) {
-      if (!on) this.showSlot("worktrees", false);
+    if (now < (this.keepUntil ?? 0)) {
+      if (shownId !== this.sticky) this.showSlot(this.sticky, false);
       return;
     }
-    this.wtOn = on;
+    this.sticky = shownId;
   }
 
   activate(l) {
@@ -361,7 +365,7 @@ export default class QuickLinks extends View {
     if (l.dialog === "issue-worktree" && this.slot("worktrees").has) {
       if (l.remove) { setShared("issue-worktree.remove", l.remove); this.showSlot("worktrees", false); }
       else this.showSlot("worktrees", true);
-      this.wtKeepUntil = 0;
+      this.keepUntil = 0;
     } else if (l.dialog) openOverlay({ mod: l.dialog, kind: "dialog", width: 460, props: { cwd: l.cwd, remove: l.remove } });
     else if (l.path) openInEditor(l.path);
     else openUrl(l.url);
@@ -433,7 +437,7 @@ export default class QuickLinks extends View {
   render() {
     const t = theme();
     const stop = (_e, cx) => cx.stop_propagation();
-    if (!checking()) this.keepWorktrees();
+    if (!checking()) this.keepPanels();
     const wtOn = this.slot("worktrees").on;
     const button = (l) => h_flex().id(`ql-${l.id}`).h(26).px(8).gap(5).flex_none().items_center().rounded(6)
       .text_size(12).text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
@@ -458,6 +462,7 @@ export default class QuickLinks extends View {
       .bg(prsOn ? t.selected : t.chrome).text_color(prsOn ? t.foreground : t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", stop)
       .on_click(() => {
+        this.keepUntil = 0;
         if (!inLayout) run("mod.open", { name: "pr-inbox" });
         else if (prsOn) run("layout.hide", { id: "panel" });
         else { run("layout.select", { stack: "panel-body", child: "prs" }); run("layout.show", { id: "panel" }); }
