@@ -254,6 +254,7 @@ export default class IssueWorktree extends View {
   // those are older than PR_TTL, or a branch is new) ask GitHub once for all.
   // force: after a rename or remove, when branches changed.
   async reload(cx, force = false) {
+    if (force) setShared("issue-worktree.changed", Date.now()); // the top bar's badge recounts
     const root = this.repo.root;
     const list = await worktrees(root);
     const cached = PR_CACHE.get(root);
@@ -443,6 +444,7 @@ export default class IssueWorktree extends View {
         if (add.code !== 0) throw new Error(add.stderr.trim() || "git worktree add failed");
 
         if (!this.panel()) closeOverlay(props()?.overlay);
+        setShared("issue-worktree.changed", Date.now());
         this.busy = null; this.issue = ""; this.issueInput.set_value("");
         run("space.new", { folder: dir });
         if (this.panel()) await this.reload(cx, true);
