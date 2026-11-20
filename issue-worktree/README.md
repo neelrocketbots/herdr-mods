@@ -1,6 +1,6 @@
 # issue-worktree
 
-A dialog for working one git worktree per issue: name it after the Linear issue,
+A side panel (or, in layouts without a slot for it, a dialog) for working one git worktree per issue: name it after the Linear issue,
 and it makes `<repo>/.worktrees/<name>` on a branch of that name, from a fresh
 `origin/master`, and opens a space there. Below, every existing worktree with
 its PR and CI, ready to open, rename or remove.
@@ -31,6 +31,11 @@ its PR and CI, ready to open, rename or remove.
   one clears the leftover files (only inside `.worktrees/`). Removing or moving
   a nested worktree also deletes the parent folders it leaves empty, never
   `.worktrees/` itself.
+
+As a panel (the layout's `panel-body` child `worktrees`, next to Files, Changes
+and PRs) it follows the focused terminal's repo and stays open while you work;
+the quick-links Worktree button toggles it. Without that slot, the button and
+⌘⌥N open it as a dialog.
 
 All worktrees' PRs come from one GitHub request, and their Linear statuses from
 one Linear request, both remembered for a minute between opens.

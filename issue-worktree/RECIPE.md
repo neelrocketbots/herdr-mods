@@ -1,6 +1,7 @@
 # Issue worktree
 
-A dialog for working one git worktree per issue. You type a name (usually a
+A side panel, or a dialog in layouts without a slot for it, for working one
+git worktree per issue. You type a name (usually a
 Linear ID such as `WEB-140`), and it creates `<repo>/.worktrees/WEB-140` on a
 branch of the same name from a fresh `origin/master`, then opens a space there
 with a terminal. Below the form it lists the repo's existing worktrees, each
@@ -10,7 +11,14 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 
 ## What you see
 
-- A dialog 460px wide on the theme's `popover`, with 18px padding. The title
+- Panel: fills the side panel on `background` with a 1px `border`, 10px
+  corners and 14px padding. Title "Worktrees" 13.5px semibold, then the repo's
+  folder name in 11.5px `dim`; the field's label reads "New worktree"; no Cancel
+  button; the list takes the remaining height. It follows the focused
+  terminal's folder while shown (same repo: reload; another repo: start over),
+  reloads when shown again after 60s, and focuses the name field on showing.
+  Creating clears the field and reloads instead of closing.
+- Dialog: 460px wide on the theme's `popover`, with 18px padding. The title
   "New worktree" is 15px semibold, with "Esc" in 11px `dim` on the right.
 - "Worktree name" (11.5px `dim`), then a 36px input with 9px corners, a 1px
   `accent` border on `background`, and 12.8px text. Placeholder:
@@ -90,8 +98,12 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 
 ## Built from
 
-- An overlay mod: `mod.json` overlay `{ kind: "dialog", width: 460 }`, `props`
-  `cwd` and `remove`. `keys.json` binds `cmd-alt-n`.
+- A layout block (`panel-body` child `worktrees`; panel mode is "no
+  `props().overlay`", shown when the panel is visible with `active:
+  "worktrees"`) or an overlay: `mod.json` overlay `{ kind: "dialog", width: 460 }`,
+  `props` `cwd` and `remove`. `keys.json` binds `cmd-alt-n` (dialog). The panel
+  takes a pending Remove from `shared("issue-worktree.remove")` (a worktree
+  path), clearing it once that row is found.
 - herdr: `exec`, `run` (`space.new`, `space.select`, `space.close`), `props`,
   `closeOverlay`, `focused`, `spaces`, `panes`, `home`, `notify`, `shared`
   (`herdr-mods.editor` for the tooltip), `theme`, `checking`; gpui-base

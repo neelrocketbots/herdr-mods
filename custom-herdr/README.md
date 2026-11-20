@@ -1,7 +1,7 @@
 # custom-herdr
 
 Herdr's main layout with the whole kit wired in: `quick-links` in the top bar,
-`files-md`, `changes-editor` and `pr-inbox` as the side panels, `usage-limits`
+`files-md`, `changes-editor`, `pr-inbox` and `issue-worktree` as the side panels, `usage-limits`
 at the bottom of the sidebar, and shortcuts for
 the worktree dialog and the PR inbox.
 
@@ -11,8 +11,9 @@ the worktree dialog and the PR inbox.
 
 - `layouts/custom-herdr.json`: Herdr's `main` layout with a `quick-links` block
   after the tabs, and the side panel stack (`panel-body`) holding `files`
-  (`files-md`), `changes` (`changes-editor`) and `prs` (`pr-inbox`). The Files,
-  Changes and PRs buttons toggle them.
+  (`files-md`), `changes` (`changes-editor`), `prs` (`pr-inbox`) and
+  `worktrees` (`issue-worktree`). The Files, Changes, PRs and Worktree buttons
+  toggle them.
 - `layouts/custom-herdr.svg`: its picture in Settings.
 - A `usage` block (`usage-limits`) above the sidebar footer.
 - `mods/`: copies of all six mods, so the layout installs on its own.

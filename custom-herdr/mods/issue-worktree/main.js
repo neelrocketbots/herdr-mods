@@ -20,19 +20,26 @@
 // (the branch; optionally the folder too). props.remove = a worktree path
 // opens straight on that row's Remove (the top bar's "merged · clean up").
 //
-// Opened by the quick-links "Worktree" button with props { cwd } (any folder
-// inside the repo or one of its worktrees), or by `mod.open:issue-worktree`
-// (keys.json) for the focused terminal's folder.
+// A side panel (the layout's panel-body child "worktrees", next to Files,
+// Changes and PRs, toggled by the quick-links "Worktree" button) that follows
+// the focused terminal's repo. In layouts without that slot it's a dialog,
+// opened by the button with props { cwd } (any folder inside the repo or one
+// of its worktrees), or by `mod.open:issue-worktree` (keys.json) for the
+// focused terminal's folder. The top bar's "Merged · clean up" asks for a
+// row's Remove with props.remove (dialog) or shared("issue-worktree.remove")
+// (panel).
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar } from "gpui-base";
-import { exec, run, props, closeOverlay, theme, checking, focused, spaces, panes, home, notify, shared } from "herdr";
+import { exec, run, props, closeOverlay, theme, checking, focused, spaces, panes, home, notify, shared, setShared, layout } from "herdr";
 import { ciSummary, CI_COLOR, CI_WORD } from "./ci.js";
 import { openInEditor, editorName } from "./editor.js";
 import { linearId, issueStatus, STATUS_COLOR } from "./linear.js";
 
 const BASE = { remote: "origin", branch: "master" };
-const LIST_MAX = 320; // px of worktree list before it scrolls
+const LIST_MAX = 320; // px of worktree list before it scrolls (dialog)
+const REMOVE_KEY = "issue-worktree.remove"; // panel: a worktree path whose Remove to open
+const find = (n, id) => !n || typeof n !== "object" ? null : n.id === id ? n : (n.children ?? []).reduce((f, c) => f ?? find(c, id), null);
 // One part of a name, safe as both a folder and a branch name part.
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 // "hotfix/WEB-140" -> { branch: "hotfix/WEB-140", folder: "WEB-140" }; null when invalid.
@@ -164,39 +171,78 @@ export default class IssueWorktree extends View {
     this.error = null;
     this.repo = null;   // { gitDir, root } once found
     this.list = undefined;
+    this.cwd = undefined; // the folder whose repo is shown
+    this.onScreen = false; // panel: on screen at the last render
+    this.loadedAt = 0;
     this.home = checking() ? "" : home();
     this.issueInput = InputState.new({ placeholder: "WEB-140 or hotfix/WEB-140 (also filters the list below)" });
     this.issueInput.on("change", (_e, cx) => { this.issue = this.issueInput.value(); this.error = null; cx.notify(); });
     this.issueInput.on("submit", (_e, cx) => this.create(cx));
     this.handle = cx.focus_handle();
     this.editor = "editor";
-    if (checking()) return;
-    cx.spawn(async (cx) => { this.editor = await editorName(); cx.notify(); });
-    this.issueInput.focus();
-    cx.timer.after(600, () => this.issueInput.focus());
-
-    const cwd = props()?.cwd ?? focused()?.cwd;
-    if (!cwd) { this.repoError = "No folder: focus a terminal inside a repo first"; this.list = []; return; }
     this.confirm = null; // { path, dirty } while a Remove waits for confirmation
     this.renaming = null; // { path, branch, move, pushed } while a row is being renamed
     this.renameText = "";
     this.renameInput = InputState.new({ placeholder: "new name, e.g. hotfix/WEB-140-export-timeout" });
     this.renameInput.on("change", (_e, cx) => { this.renameText = this.renameInput.value(); this.error = null; cx.notify(); });
     this.renameInput.on("submit", (_e, cx) => this.rename(cx));
+    if (checking()) return;
+    cx.spawn(async (cx) => { this.editor = await editorName(); cx.notify(); });
+    if (this.panel()) return; // render() follows the focused terminal while shown
+    this.issueInput.focus();
+    cx.timer.after(600, () => this.issueInput.focus());
+    this.follow(props()?.cwd ?? focused()?.cwd, cx);
+  }
+
+  // A panel in the layout, or a dialog?
+  panel() { return !props()?.overlay; }
+
+  // Is it on screen (a dialog, or the layout's panel shown on this child)?
+  visible() {
+    if (!this.panel()) return true;
+    const root = layout(), panel = find(root, "panel"), body = find(root, "panel-body");
+    return Boolean(panel && !panel.hidden && body?.active === "worktrees");
+  }
+
+  // Show the repo around `cwd`: find it, then list its worktrees. The same
+  // repo again just reloads (PRs stay cached for PR_TTL).
+  follow(cwd, cx) {
+    this.cwd = cwd;
+    if (!cwd) { this.repo = null; this.repoError = "No folder: focus a terminal inside a repo first"; this.list = []; cx.notify(); return; }
     cx.spawn(async (cx) => {
+      let repo;
       try {
-        this.repo = await repoOf(cwd);
+        repo = await repoOf(cwd);
       } catch (e) {
-        this.repoError = String(e?.message ?? e);
-        this.list = [];
+        if (this.cwd !== cwd) return;
+        this.repo = null; this.repoError = String(e?.message ?? e); this.list = [];
         cx.notify();
         return;
       }
+      if (this.cwd !== cwd) return;
+      if (repo.root !== this.repo?.root) { this.list = undefined; this.confirm = null; this.renaming = null; }
+      this.repo = repo; this.repoError = null;
       await this.reload(cx);
+      this.loadedAt = Date.now();
       // Opened from the top bar's "merged · clean up": go straight to its Remove.
       const target = props()?.remove && this.list.find((c) => c.path === props().remove);
       if (target) this.askRemove(target, cx);
     });
+  }
+
+  // Panel: follow the focused terminal while shown, reload when shown again
+  // after PR_TTL, focus the name field on showing, and take a pending Remove.
+  track(cx) {
+    const shown = this.visible();
+    if (shown) {
+      const cwd = focused()?.cwd ?? this.cwd ?? spaces().find((s) => s.active)?.folder;
+      if (cwd !== this.cwd || (!this.onScreen && Date.now() - this.loadedAt > PR_TTL)) this.follow(cwd, cx);
+      if (!this.onScreen) cx.timer.after(50, () => this.issueInput.focus());
+      const want = shared(REMOVE_KEY);
+      const target = want && this.list?.find((c) => c.path === want);
+      if (target) { setShared(REMOVE_KEY, null); this.askRemove(target, cx); }
+    }
+    this.onScreen = shown;
   }
 
   // Read the worktrees and show them with the PRs known so far, then (when
@@ -359,7 +405,7 @@ export default class IssueWorktree extends View {
   // Go to the worktree's space, or open one there with a terminal.
   open(path) {
     const s = spaceOf(path, this.list ?? []);
-    closeOverlay(props()?.overlay);
+    if (!this.panel()) closeOverlay(props()?.overlay);
     if (s) run("space.select", { id: s.id });
     else run("space.new", { folder: path });
   }
@@ -391,8 +437,10 @@ export default class IssueWorktree extends View {
         const add = await git(["worktree", "add", "-b", branch, dir, `${BASE.remote}/${BASE.branch}`], root);
         if (add.code !== 0) throw new Error(add.stderr.trim() || "git worktree add failed");
 
-        closeOverlay(props()?.overlay);
+        if (!this.panel()) closeOverlay(props()?.overlay);
+        this.busy = null; this.issue = ""; this.issueInput.set_value("");
         run("space.new", { folder: dir });
+        if (this.panel()) await this.reload(cx, true);
       } catch (e) {
         this.busy = null;
         this.error = String(e?.message ?? e);
@@ -433,11 +481,12 @@ export default class IssueWorktree extends View {
             .child(svg("mods/issue-worktree/linear.svg").size(12).text_color(c.status.color ?? t[STATUS_COLOR[c.status.type] ?? "muted"]))
             .child(c.status.state)))
           .when(Boolean(there), (el) => el.child(div().flex_none().text_size(11).text_color(t.accent).child("open")))
-          .when(!there && c.at > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(ago(c.at))))
+          .when(!there && c.at > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(ago(c.at)))))
+        .child(h_flex().gap(2).items_center()
+          .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(branchNote ? `${branchNote}  ·  ${tilde(c.path)}` : tilde(c.path)))
           .child(action(`iw-editor-${i}`, svg("mods/issue-worktree/editor.svg").size(13), () => this.openEditor(c.path)).tooltip(`Open in ${shared("herdr-mods.editor") ?? this.editor}`))
           .child(action(`iw-rn-${i}`, "rename", (cx) => this.startRename(c, cx)))
           .child(action(`iw-rm-${i}`, "remove", (cx) => this.askRemove(c, cx), t.ansi1)))
-        .child(div().truncate().text_size(11.5).text_color(t.dim).child(branchNote ? `${branchNote}  ·  ${tilde(c.path)}` : tilde(c.path)))
         .when(confirming, (el) => el.child(h_flex().pt(6).gap(6).items_center()
           .child(div().flex_1().min_w(0).text_size(11.5).text_color(this.confirm.dirty || this.confirm.running?.length ? t.ansi1 : t.muted)
             .child((this.confirm.running?.length ? `Still running in it: ${this.confirm.running.join(", ")}. Stop them first. ` : "") +
@@ -463,14 +512,18 @@ export default class IssueWorktree extends View {
         });
     };
     const count = all === undefined ? "loading…" : rows.length === all.length ? `${all.length}` : `${rows.length}/${all.length}`;
-    return v_flex().pt(16)
+    const panel = this.panel();
+    // A content-sized dialog gives the list no height to scroll in, so it gets
+    // one: its rows' height, at most LIST_MAX (then it scrolls). The panel's
+    // list takes whatever height is left.
+    const box = panel ? div().flex_1().min_h(0).relative()
+      : div().relative().h(Math.min(LIST_MAX, Math.max(40, rows.reduce((h, c) =>
+          h + 56 + (this.renaming?.path === c.path ? 120 : 0) + (this.confirm?.path === c.path ? 36 : 0), 0))));
+    return v_flex().pt(16).when(panel, (el) => el.flex_1().min_h(0))
       .child(h_flex().pb(6).gap(6).items_center().border_t(1).border_color(t.border).pt(12)
         .child(div().text_size(11.5).text_color(t.dim).child("Existing worktrees"))
         .child(div().text_size(11).text_color(t.dim).child(count)))
-      // A content-sized dialog gives the list no height to scroll in, so it
-      // gets one: its rows' height, at most LIST_MAX (then it scrolls).
-      .child(div().relative().h(Math.min(LIST_MAX, Math.max(40, rows.reduce((h, c) =>
-          h + 56 + (this.renaming?.path === c.path ? 120 : 0) + (this.confirm?.path === c.path ? 36 : 0), 0))))
+      .child(box
         .child(v_flex().id("iw-list").size_full().overflow_y_scroll().gap(2)
           .children(rows.map(row))
           .when(all !== undefined && rows.length === 0, (el) => el.child(div().px(10).py(8).text_size(12).text_color(t.dim)
@@ -478,8 +531,9 @@ export default class IssueWorktree extends View {
         .child(Scrollbar.vertical("iw-list").absolute().inset_0()));
   }
 
-  render() {
-    const t = theme();
+  render(cx) {
+    if (this.panel() && !checking()) this.track(cx);
+    const t = theme(), panel = this.panel();
     const label = (text) => div().pt(14).pb(6).text_size(11.5).text_color(t.dim).child(text);
     const button = (id, text, primary, action) => h_flex().id(id).h(32).px(14).items_center().rounded(8)
       .border_1().border_color(primary ? t.solid : t.input).bg(primary ? t.solid : t.raised)
@@ -489,11 +543,18 @@ export default class IssueWorktree extends View {
     const name = parseName(this.id());
     const exists = name && this.repo && (this.list ?? []).some((c) => c.path === `${this.repo.root}/.worktrees/${name.folder}`);
 
-    return v_flex().id("issue-worktree").track_focus(this.handle).w_full().min_h(0).p(18).bg(t.popover).text_color(t.foreground)
-      .child(h_flex().items_center()
-        .child(div().flex_1().text_size(15).font_semibold().child("New worktree"))
-        .child(div().text_size(11).text_color(t.dim).child("Esc")))
-      .child(label("Worktree name"))
+    const repoName = this.repo?.root.split("/").pop();
+    const root = panel
+      ? v_flex().id("issue-worktree").track_focus(this.handle).size_full().min_h(0).p(14).rounded(10).overflow_hidden()
+        .bg(t.background).border_1().border_color(t.border).text_color(t.foreground)
+      : v_flex().id("issue-worktree").track_focus(this.handle).w_full().min_h(0).p(18).bg(t.popover).text_color(t.foreground);
+    return root
+      .child(h_flex().items_center().gap(8)
+        .child(div().flex_none().text_size(panel ? 13.5 : 15).font_semibold().child(panel ? "Worktrees" : "New worktree"))
+        .when(panel && Boolean(repoName), (el) => el.child(div().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(repoName)))
+        .child(div().flex_1())
+        .when(!panel, (el) => el.child(div().text_size(11).text_color(t.dim).child("Esc"))))
+      .child(label(panel ? "New worktree" : "Worktree name"))
       .child(Input.new(this.issueInput).h(36).px(10).rounded(9).border_1().border_color(t.accent)
         .bg(t.background).text_size(12.8).text_color(t.foreground))
       .child(v_flex().pt(14).gap(3).text_size(11.5).text_color(t.dim)
@@ -502,7 +563,7 @@ export default class IssueWorktree extends View {
       .when(Boolean(this.error), (el) => el.child(div().pt(10).text_size(11.5).text_color(t.ansi1).child(this.error)))
       .child(h_flex().pt(18).gap(8).items_center()
         .child(div().flex_1().text_size(11.5).text_color(t.dim).child(this.busy ?? ""))
-        .child(button("iw-cancel", "Cancel", false, () => closeOverlay(props()?.overlay)))
+        .when(!panel, (el) => el.child(button("iw-cancel", "Cancel", false, () => closeOverlay(props()?.overlay))))
         .child(button("iw-create", this.busy ? "Working…" : exists ? "Open" : "Create", true, (_e, cx) => this.create(cx))))
       .child(this.renderList(t));
   }

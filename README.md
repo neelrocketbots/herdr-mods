@@ -21,7 +21,7 @@ and a screenshot. Take one or all.
 | Unit | What it is |
 | --- | --- |
 | [`quick-links`](quick-links) | Top bar: GitHub repo, the branch's PR with a CI dot, open PRs in other repos that name the branch's Linear issue, the Linear issue, your editor. Adds **PRs**, **Worktree** and **Merged · clean up** when `pr-inbox` / `issue-worktree` are installed |
-| [`issue-worktree`](issue-worktree) | Dialog (⌘⌥N): make `<repo>/.worktrees/<name>` on branch `<name>` from a fresh `origin/master`; list worktrees with PR and CI; rename, remove, open in your editor |
+| [`issue-worktree`](issue-worktree) | Side panel, or dialog (⌘⌥N): make `<repo>/.worktrees/<name>` on branch `<name>` from a fresh `origin/master`; list worktrees with PR and CI; rename, remove, open in your editor |
 | [`pr-inbox`](pr-inbox) | PRs waiting on your review and your own, across repos. A side panel in `custom-herdr`, a dialog (⌘⌥P) anywhere else |
 | [`files-md`](files-md) | Herdr's Files panel, plus rendered markdown (images included) and open in your editor |
 | [`changes-editor`](changes-editor) | Herdr's Changes panel, plus open in your editor |

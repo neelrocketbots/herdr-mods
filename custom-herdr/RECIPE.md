@@ -2,8 +2,8 @@
 
 Herdr's main layout set up for one worktree per issue. The top bar adds quick
 links for the focused terminal (PRs, GitHub repo, PR with CI, Linear issue,
-Worktree, editor). The side panel holds three stacked views: Files with
-markdown, Changes with an editor button, and the PR inbox. Spaces and agents
+Worktree, editor). The side panel holds four stacked views: Files with
+markdown, Changes with an editor button, the PR inbox and Worktrees. Spaces and agents
 stay on the left as in Herdr's default window.
 
 ![custom-herdr](preview.png)
@@ -22,9 +22,10 @@ stay on the left as in Herdr's default window.
     shown. To their right, the side panel: 368px (280 to 900), hidden until a
     panel button opens it.
   - A 28px status bar.
-- The side panel shows one of three views: `files` (files-md), `changes`
-  (changes-editor) or `prs` (pr-inbox). Herdr's Files and Changes buttons and
-  the quick-links PRs button switch between them.
+- The side panel shows one of four views: `files` (files-md), `changes`
+  (changes-editor), `prs` (pr-inbox) or `worktrees` (issue-worktree). Herdr's
+  Files and Changes buttons and the quick-links PRs and Worktree buttons switch
+  between them.
 - In Settings > Look the layout shows its own preview,
   `layouts/custom-herdr.svg`.
 

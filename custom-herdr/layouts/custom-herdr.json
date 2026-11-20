@@ -185,6 +185,13 @@
                       "content": {
                         "mod": "pr-inbox"
                       }
+                    },
+                    {
+                      "type": "block",
+                      "id": "worktrees",
+                      "content": {
+                        "mod": "issue-worktree"
+                      }
                     }
                   ],
                   "active": "files"
