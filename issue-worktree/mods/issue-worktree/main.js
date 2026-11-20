@@ -463,7 +463,10 @@ export default class IssueWorktree extends View {
       const prWord = pr ? (pr.isDraft && pr.state === "OPEN" ? "draft" : pr.state.toLowerCase()) : null;
       // Title: the folder (short, unique); the branch goes under it when it says more.
       const label = folderLabel(c.path, this.repo?.root ?? ""), branchNote = c.branch === label ? null : (c.branch ?? "detached");
+      // The worktree whose space is the one shown now.
+      const current = Boolean(there?.active);
       return v_flex().id(`iw-wt-${i}`).flex_none().min_h(44).py(5).px(10).justify_center().rounded(7).cursor_pointer()
+        .when(current && !confirming && !renaming, (el) => el.bg(t.selected))
         .when(confirming || Boolean(renaming), (el) => el.bg(t.raised)).when(!confirming && !renaming, (el) => el.hover((s) => s.bg(t.hover)))
         .on_click(() => this.open(c.path))
         .child(h_flex().gap(6).items_center()

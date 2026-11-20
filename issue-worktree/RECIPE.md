@@ -33,7 +33,8 @@ with its pull request and CI, an open-in-editor button, rename and remove.
   busy, at 0.6 opacity).
 - A 1px `border` line, then "Existing worktrees" with a count (`8`, or `3/8`
   when filtered).
-- Rows of at least 44px with 7px corners. Line one: the folder (its path under
+- Rows of at least 44px with 7px corners; the row whose space is the one shown
+  now sits on `selected`. Line one: the folder (its path under
   `.worktrees/`, e.g. `HOT-3086` or `FRONT-504/web`, else the folder's name),
   a PR chip (`#482 open`, `#479 draft`, `#465 merged`; 11px, tinted `ansi2`,
   `ansi5`, `ansi1`, or `dim` for drafts) with a 6px CI dot on open PRs, then
