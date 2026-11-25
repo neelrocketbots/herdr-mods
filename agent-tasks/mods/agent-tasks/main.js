@@ -1,121 +1,150 @@
 // Agent tasks: the task list of the Claude Code session working in the shown
 // space, in a sidebar block. Done / now / next, live, read-only.
 //
-// Which session: every running one in ~/.claude/sessions/<pid>.json (pid
-// checked with ps), owned by the space whose folder is the longest prefix of
-// its cwd, the most recently updated. None running: the newest transcript in
-// the space folder's own project dir, if it changed in the last day ("ended").
-// The list: TaskCreate / TaskUpdate calls replayed from the session transcript
-// (~/.claude/projects/<cwd as a dir name>/<sessionId>.jsonl). Only new bytes
-// are read each tick; a shorter file starts over. Every 2s while the window is
-// visible. Never writes under ~/.claude.
+// Which session: the space's Claude Code agents (Herdr's agents(), most
+// recently changed first); for each, `hc get` gives the pid of the Claude
+// running in its terminal, and <config>/sessions/<pid>.json (in ~/.claude or
+// another config folder like ~/.claude2) its sessionId and cwd. The first one
+// with a task list wins. None: the space's last session seen live (remembered
+// per space), faded as "ended", if its transcript changed in the last day.
+// The list: TaskCreate / TaskUpdate calls replayed from the transcript
+// (<config>/projects/<cwd as a dir name>/<sessionId>.jsonl). Only new whole
+// lines are read each tick; a shorter file starts over. Every 2s while the
+// window is visible, and when the space changes. Never writes under ~/.claude.
 //
-// The layout block (props.block, default "tasks") is sized to fit, and hidden
-// when there's nothing to show. The header folds it (remembered).
+// The layout block (props.block) starts at 0px; this sizes it to its content,
+// and back to 0 when there's nothing to show. The header folds it (remembered).
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { exec, home, theme, run, props, checking, spaces, agents, panes, window } from "herdr";
-import { TASK_GREP, projectDir, pickSession, newState, feed, list, summary } from "./tasks.js";
+import { exec, hc, readTextFile, theme, run, props, checking, spaces, agents, window } from "herdr";
+import { CHUNK, CLAUDE_DIRS, projectDir, pickAgents, newState, feed, list, summary } from "./tasks.js";
 
 const TICK_MS = 2000;
+const DIRS_MS = 60_000;               // look for Claude config folders this often
+const RETRY_MS = 30_000;              // after a failed or timed-out read
 const ENDED_MS = 24 * 3600_000;
 const LIST_MAX = 168;                 // px of rows before the list scrolls (~6)
 const COLLAPSED_KEY = "agent-tasks.collapsed";
+const LAST_KEY = "agent-tasks.last";  // { spaceId: { path, label } }
 
-// One session file per line (they have no trailing newline).
-const SESSIONS = 'for f in "$1"/*.json; do [ -f "$f" ] && { tr -d "\\n" < "$f"; echo; }; done';
-// Task lines in bytes [from, to) of a transcript, without request copies.
-const CHUNK = `tail -c +$(($2 + 1)) "$1" | head -c $(($3 - $2)) | grep -E '${TASK_GREP}' | grep -v '"type":"api-request'`;
-
-// Per transcript: bytes read so far and the replay state. Module scope, so it
-// survives this view being rebuilt.
+// Per transcript: bytes read so far, the replay state, when to retry after a
+// failure. Module scope, so it survives this view being rebuilt.
 const reads = new Map();
 
-const block = () => props()?.block ?? "tasks";
 const agoText = (ms) => { const m = Math.round((Date.now() - ms) / 60_000); return m < 60 ? `${Math.max(1, m)}m` : `${Math.round(m / 60)}h`; };
+const activeSpace = () => spaces().find((s) => s.active) ?? null;
 
 export default class AgentTasks extends View {
-  init(cx) {
+  init(_props, cx) {
     this.view = null;        // { label, endedAt, tasks } or null
+    this.sig = null;         // what's drawn, to skip redraws that change nothing
     this.showDone = false;
-    this.px = -1;
-    this.shown = null;
+    this.px = null;
+    this.spaceId = null;
+    this.dirs = null; this.dirsAt = 0;
     try { this.collapsed = localStorage.getItem(COLLAPSED_KEY) === "1"; } catch { this.collapsed = false; }
+    try { this.last = JSON.parse(localStorage.getItem(LAST_KEY) ?? "{}") ?? {}; } catch { this.last = {}; }
     if (checking()) return;
-    this.dir = `${home()}/.claude`;
     cx.timer.every(TICK_MS, (cx) => this.tick(cx));
     this.tick(cx);
   }
 
   tick(cx) {
     if (window()?.visible === false) return;
-    if (this.task && !this.task.is_done()) return; // the last read is still running
+    if (this.task && !this.task.is_done()) { this.again = true; return; } // one read at a time
+    this.again = false;
     this.task = cx.spawn(async (cx) => {
       try {
-        const view = await this.load();
-        this.view = view;
-        this.showBlock(Boolean(view));
-        cx.notify();
+        const { spaceId, view } = await this.load();
+        if (activeSpace()?.id !== spaceId) return; // switched meanwhile: the next read has it
+        const sig = view ? JSON.stringify([view.label, view.endedAt && agoText(view.endedAt), view.tasks]) : "";
+        if (sig !== this.sig) {
+          this.sig = sig; this.view = view;
+          if (!view) this.size(0);
+          cx.notify();
+        }
       } catch {} // keep the last list
+      if (this.again) this.tick(cx);
     });
   }
 
   async load() {
-    const all = spaces(), space = all.find((s) => s.active);
-    if (!space || space.machine) return null;
-    const folders = all.filter((s) => !s.machine).map((s) => s.folder || home());
-    const folder = space.folder || home();
-    const r = await exec("sh", ["-c", SESSIONS, "sh", `${this.dir}/sessions`], { timeout: 5000 });
-    const sessions = r.stdout.split("\n").map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-    const pids = sessions.map((s) => s.pid).filter(Number.isInteger);
-    const ps = pids.length ? await exec("ps", ["-o", "pid=", "-p", pids.join(",")], { timeout: 5000 }) : { stdout: "" };
-    const alive = new Set(ps.stdout.split(/\s+/).filter(Boolean));
-    const live = pickSession(sessions, alive, folder, folders);
-    if (live) {
-      const { tasks } = await this.read(`${this.dir}/projects/${projectDir(live.cwd)}/${live.sessionId}.jsonl`);
-      return tasks.length ? { label: this.label(space, live), endedAt: null, tasks } : null;
+    const space = activeSpace();
+    if (!space || space.machine) return { spaceId: space?.id ?? null, view: null };
+    if (!this.dirs || Date.now() - this.dirsAt > DIRS_MS) {
+      const r = await exec("sh", ["-c", CLAUDE_DIRS], { timeout: 5000 });
+      this.dirs = r.stdout.split("\n").filter(Boolean); this.dirsAt = Date.now();
     }
-    const last = await exec("sh", ["-c", 'ls -t "$1"/*.jsonl 2>/dev/null | head -1', "sh", `${this.dir}/projects/${projectDir(folder)}`], { timeout: 5000 });
-    const path = last.stdout.trim();
-    if (!path) return null;
-    const { tasks, mtime } = await this.read(path);
-    if (!tasks.length || Date.now() - mtime > ENDED_MS) return null;
-    return { label: "last session", endedAt: mtime, tasks };
+    const live = new Set();
+    for (const agent of pickAgents(agents(), space.id)) {
+      const session = await this.session(agent.address);
+      if (!session) continue;
+      live.add(session.path);
+      const { tasks } = await this.read(session.path);
+      if (!tasks.length) continue;
+      const label = agent.title || session.name || "Claude Code";
+      this.remember(space.id, { path: session.path, label });
+      return { spaceId: space.id, view: { label, endedAt: null, tasks } };
+    }
+    const last = this.last[space.id];
+    if (!last || live.has(last.path)) return { spaceId: space.id, view: null };
+    const { tasks, mtime } = await this.read(last.path, ENDED_MS);
+    return { spaceId: space.id, view: tasks.length ? { label: last.label, endedAt: mtime, tasks } : null };
   }
 
-  // The transcript's tasks, reading only bytes added since the last call.
-  async read(path) {
+  // The Claude session in terminal `address`: { path, name } or null.
+  async session(address) {
+    const r = await hc(["get", address, "--json"]).catch(() => null);
+    let pid = null;
+    try { pid = JSON.parse(r?.stdout ?? "").foreground?.pid; } catch {}
+    if (!Number.isInteger(pid)) return null;
+    for (const dir of this.dirs) {
+      const text = await readTextFile(`${dir}/sessions/${pid}.json`).catch(() => null);
+      if (!text) continue;
+      let s = null;
+      try { s = JSON.parse(text); } catch {}
+      if (s?.sessionId && typeof s.cwd === "string") return { path: `${dir}/projects/${projectDir(s.cwd)}/${s.sessionId}.jsonl`, name: s.name };
+    }
+    return null;
+  }
+
+  remember(spaceId, entry) {
+    const was = this.last[spaceId];
+    if (was?.path === entry.path && was?.label === entry.label) return;
+    const ids = new Set(spaces().map((s) => s.id));
+    this.last = Object.fromEntries(Object.entries({ ...this.last, [spaceId]: entry }).filter(([id]) => ids.has(id)));
+    try { localStorage.setItem(LAST_KEY, JSON.stringify(this.last)); } catch {}
+  }
+
+  // The transcript's tasks, reading only whole lines added since the last
+  // call. Older than maxAgeMs: none, without reading it.
+  async read(path, maxAgeMs = Infinity) {
     const st = await exec("stat", ["-f", "%z %m", path], { timeout: 5000 });
     if (st.code !== 0) return { tasks: [], mtime: 0 };
     const [size, mtimeS] = st.stdout.trim().split(/\s+/).map(Number);
+    const mtime = mtimeS * 1000;
+    if (Date.now() - mtime > maxAgeMs) return { tasks: [], mtime };
     let r = reads.get(path);
-    if (!r || size < r.offset) { r = { offset: 0, state: newState() }; reads.set(path, r); }
-    if (size > r.offset) {
-      const g = await exec("sh", ["-c", CHUNK, "sh", path, String(r.offset), String(size)], { timeout: 15_000 });
-      if (g.code <= 1) { feed(r.state, g.stdout.split("\n")); r.offset = size; } // 1: no task lines in it
+    if (!r || size < r.offset) { r = { offset: 0, state: newState(), retryAt: 0 }; reads.set(path, r); }
+    if (size > r.offset && Date.now() >= r.retryAt) {
+      try {
+        const g = await exec("sh", ["-c", CHUNK, "sh", path, String(r.offset), String(size)], { timeout: 15_000 });
+        if (g.code === 0 || g.code === 1) { feed(r.state, g.stdout.split("\n")); r.offset = size; } // 1: no task lines
+        else if (g.code !== 3) r.retryAt = Date.now() + RETRY_MS;                                // 3: mid-line, next tick
+      } catch { r.retryAt = Date.now() + RETRY_MS; }
     }
-    return { tasks: list(r.state), mtime: mtimeS * 1000 };
+    return { tasks: list(r.state), mtime };
   }
 
-  // The Herdr agent's title for the session's pane, else its session name.
-  label(space, session) {
-    const byPane = new Map(panes().map((p) => [p.pane, p]));
-    const agent = agents().find((a) => a.space === space.id && a.app === "claude-code" && byPane.get(a.pane)?.cwd === session.cwd);
-    return agent?.title || session.name || "Claude Code";
-  }
-
-  showBlock(on) {
-    if (on === this.shown || !props()?.block) return;
-    this.shown = on;
-    if (on) this.px = -1; // re-fit once shown
-    run(on ? "layout.show" : "layout.hide", { id: block() });
+  size(px) {
+    if (!props()?.block || px === this.px) return;
+    this.px = px;
+    run("layout.resize", { id: props().block, px });
   }
 
   fit(height) {
     const px = Math.ceil(height);
-    if (px <= 0 || px === this.px || !props()?.block) return;
-    this.px = px;
-    run("layout.resize", { id: block(), px });
+    if (px > 0) this.size(px);
   }
 
   toggle(cx) {
@@ -125,6 +154,9 @@ export default class AgentTasks extends View {
   }
 
   render(cx) {
+    // A new space: read it now rather than at the next tick.
+    const sid = activeSpace()?.id ?? null;
+    if (sid !== this.spaceId) { this.spaceId = sid; if (!checking()) this.tick(cx); }
     const t = theme(), v = this.view;
     const root = v_flex().id("agent-tasks").w_full().bg(t.chrome).text_color(t.foreground);
     if (!v) return root;

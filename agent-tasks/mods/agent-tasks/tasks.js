@@ -1,29 +1,30 @@
 // Pure helpers for agent-tasks (no Herdr imports, so `node --test` can load
-// them): which Claude Code session belongs to a space, and its task list
-// rebuilt from transcript lines, a chunk at a time.
+// them): the space's Claude agents, the shell scripts that read Claude's
+// files, and a session's task list rebuilt from transcript lines, a chunk at
+// a time.
 
-// Lines worth parsing: task calls and their results. The caller also drops
-// "api-request-*" lines (copies of whole requests, up to ~150KB each).
+// Lines worth parsing: task calls and their results.
 export const TASK_GREP = '"name":"Task(Create|Update)"|"task":\\{"id"';
 
 // Claude Code's folder under ~/.claude/projects for a cwd.
 export const projectDir = (cwd) => cwd.replace(/[^A-Za-z0-9]/g, "-");
 
-const inside = (path, folder) => path === folder || path.startsWith(folder.endsWith("/") ? folder : `${folder}/`);
+// Claude Code config folders: ~/.claude, plus others like ~/.claude2
+// (CLAUDE_CONFIG_DIR). One per line.
+export const CLAUDE_DIRS = `for d in "$HOME"/.claude "$HOME"/.claude?*; do [ -d "$d" ] && printf '%s\\n' "$d"; done`;
 
-// The longest of `folders` that holds `path`, or null.
-export function ownerFolder(path, folders) {
-  let best = null;
-  for (const f of folders) if (f && inside(path, f) && (!best || f.length > best.length)) best = f;
-  return best;
-}
+// sh -c CHUNK sh <transcript> <from> <to>: the task lines in bytes [from, to),
+// without request copies (which feed() ignores anyway, but they're up to
+// ~150KB each). Exits 3, printing nothing, when byte to-1 isn't a newline
+// (the read would end mid-line: try again next time); 1 when there are no
+// task lines. LC_ALL=C: byte matching, ~6x faster on big files.
+export const CHUNK = `[ "$(tail -c +$3 "$1" | head -c 1 | od -An -tx1 | tr -d ' \\n')" = 0a ] || exit 3
+tail -c +$(($2 + 1)) "$1" | head -c $(($3 - $2)) | LC_ALL=C grep -E '${TASK_GREP}' | LC_ALL=C grep -v '"type":"api-request'`;
 
-// The space's session: running (pid in `alive`), its cwd owned by `folder`,
-// the most recently updated.
-export function pickSession(sessions, alive, folder, folders) {
-  return sessions
-    .filter((s) => s && typeof s.cwd === "string" && s.sessionId && alive.has(String(s.pid)) && ownerFolder(s.cwd, folders) === folder)
-    .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0] ?? null;
+// The space's Claude Code agents (Herdr's agents()), most recently changed
+// first.
+export function pickAgents(agents, spaceId) {
+  return agents.filter((a) => a.space === spaceId && a.app === "claude-code").sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0));
 }
 
 export const newState = () => ({ tasks: new Map(), pending: new Map(), early: new Map() });

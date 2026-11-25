@@ -18,7 +18,7 @@ the Worktrees panel and the PR inbox.
 - Ctrl/Cmd-clicking a file path in a terminal opens it in the Files panel
   (`"link_handlers": ["files-md"]`).
 - `layouts/custom-herdr.svg`: its picture in Settings.
-- A `tasks` block (`agent-tasks`) above Usage: the space's Claude Code task list, hidden when there's none.
+- A `tasks` block (`agent-tasks`) above Usage: the space's Claude Code task list, 0px when there's none.
 - A `usage` block (`usage-limits`) above the sidebar footer.
 - `mods/`: copies of all seven mods, so the layout installs on its own.
 - `keys.json`: **⌘⌥N** worktrees panel (in this layout; the dialog elsewhere), **⌘⌥P** PR inbox.

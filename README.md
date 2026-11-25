@@ -111,7 +111,7 @@ They're trusted code, like any Herdr mod, and run as you:
 | files-md | Herdr's own (`git`, file reads), your editor, `cp`/`curl`/`sips` for markdown images, `test -f` on a Cmd-clicked terminal path | remote images in markdown files (`curl`) | reads `herdr-mods.json`; caches images in `data/files-md/img` |
 | changes-editor | Herdr's own (`git`, file reads) plus your editor | none added | reads `herdr-mods.json` |
 | usage-limits | `security`, `plutil`, `shasum`, `curl`; `find`, `grep`, `stat` | Anthropic's usage endpoint, with each Claude Code login's token | reads Claude Code's Keychain logins (token piped to `curl`, never stored) and `~/.codex/sessions` |
-| agent-tasks | `sh`, `tr`, `ps`, `stat`, `ls`, `tail`, `head`, `grep` | none | reads `~/.claude/sessions` and the session's transcript in `~/.claude/projects`, never writes |
+| agent-tasks | `hc get`, `sh`, `stat`, `tail`, `head`, `od`, `grep` | none | reads `~/.claude*/sessions` and the session's transcript in `~/.claude*/projects`, never writes |
 
 Nothing is sent anywhere else. `gh` uses its own login; the Linear key, if you
 add one, stays in your Keychain. usage-limits reads Claude Code's own Keychain

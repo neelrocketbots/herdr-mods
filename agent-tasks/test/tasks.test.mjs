@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { projectDir, ownerFolder, pickSession, newState, feed, list, summary } from "../mods/agent-tasks/tasks.js";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { projectDir, pickAgents, CHUNK, newState, feed, list, summary } from "../mods/agent-tasks/tasks.js";
 
 const J = (o) => JSON.stringify(o);
 const create = (useId, input, side = false) => J({ type: "assistant", isSidechain: side, message: { content: [{ type: "tool_use", id: useId, name: "TaskCreate", input }] } });
@@ -12,27 +16,51 @@ test("projectDir replaces every non-alphanumeric char", () => {
   assert.equal(projectDir("/Users/a/web/.worktrees/X-1"), "-Users-a-web--worktrees-X-1");
 });
 
-test("ownerFolder picks the longest containing folder", () => {
-  const folders = ["/u/Dev", "/u/Dev/web", "/u/Dev/web/.worktrees/X", "/u/Dev/webapp"];
-  assert.equal(ownerFolder("/u/Dev/web/.worktrees/X/src", folders), "/u/Dev/web/.worktrees/X");
-  assert.equal(ownerFolder("/u/Dev/web/src", folders), "/u/Dev/web");
-  assert.equal(ownerFolder("/u/Dev/webapp", folders), "/u/Dev/webapp");
-  assert.equal(ownerFolder("/u/Dev/other", folders), "/u/Dev");
-  assert.equal(ownerFolder("/tmp", folders), null);
+test("pickAgents: the space's Claude Code agents, most recently changed first", () => {
+  const agents = [
+    { address: "t1", space: "A", app: "claude-code", seq: 3 },
+    { address: "t2", space: "B", app: "claude-code", seq: 9 },
+    { address: "t3", space: "A", app: "codex", seq: 8 },
+    { address: "t4", space: "A", app: "claude-code", seq: 7 },
+  ];
+  assert.deepEqual(pickAgents(agents, "A").map((a) => a.address), ["t4", "t1"]);
+  assert.deepEqual(pickAgents(agents, "C"), []);
 });
 
-test("pickSession: live, owned by the space, newest; dead pids ignored", () => {
-  const folders = ["/u/Dev", "/u/Dev/web", "/u/Dev/web/.worktrees/X"];
-  const sessions = [
-    { pid: 1, sessionId: "a", cwd: "/u/Dev/web/.worktrees/X", updatedAt: 5 },
-    { pid: 2, sessionId: "b", cwd: "/u/Dev/web/.worktrees/X/sub", updatedAt: 9 },
-    { pid: 3, sessionId: "c", cwd: "/u/Dev/web/.worktrees/X", updatedAt: 99 },
-    { pid: 4, sessionId: "d", cwd: "/u/Dev/web", updatedAt: 50 },
-  ];
-  const alive = new Set(["1", "2", "4"]); // 3 crashed, its file stayed
-  assert.equal(pickSession(sessions, alive, "/u/Dev/web/.worktrees/X", folders).sessionId, "b");
-  assert.equal(pickSession(sessions, alive, "/u/Dev/web", folders).sessionId, "d");
-  assert.equal(pickSession(sessions, alive, "/u/Dev", folders), null);
+// Runs the CHUNK script on bytes [from, to) of a file: { code, lines }.
+const chunk = (path, from, to) => {
+  const r = spawnSync("sh", ["-c", CHUNK, "sh", path, String(from), String(to)], { encoding: "utf8" });
+  return { code: r.status, lines: r.stdout.split("\n").filter(Boolean) };
+};
+
+test("CHUNK returns task lines in a byte range, without request copies", () => {
+  const dir = mkdtempSync(join(tmpdir(), "agent-tasks-"));
+  const path = join(dir, "t.jsonl");
+  const a = create("t1", { subject: "A b c", activeForm: "Doing" }), r = result("t1", { id: "1", subject: "A b c" });
+  const noise = J({ type: "assistant", message: { content: [{ type: "text", text: "hi" }] } });
+  const copy = J({ type: "api-request-blob", message: { content: [{ type: "tool_use", name: "TaskCreate" }] } });
+  writeFileSync(path, [noise, a, copy, r, ""].join("\n"));
+  const size = statSync(path).size, mid = noise.length + 1 + a.length + 1;
+  assert.deepEqual(chunk(path, 0, mid), { code: 0, lines: [a] });
+  assert.deepEqual(chunk(path, mid, size), { code: 0, lines: [r] });
+  assert.equal(chunk(path, mid + copy.length + 1, size).code, 0);
+});
+
+test("CHUNK refuses a range that ends mid-line (exit 3), so nothing is lost", () => {
+  const dir = mkdtempSync(join(tmpdir(), "agent-tasks-"));
+  const path = join(dir, "t.jsonl");
+  const a = create("t1", { subject: "A" });
+  writeFileSync(path, a + "\n" + a.slice(0, 20));
+  const r = chunk(path, 0, statSync(path).size);
+  assert.equal(r.code, 3);
+  assert.deepEqual(r.lines, []);
+});
+
+test("CHUNK with no task lines exits 1", () => {
+  const dir = mkdtempSync(join(tmpdir(), "agent-tasks-"));
+  const path = join(dir, "t.jsonl");
+  writeFileSync(path, J({ type: "user", message: { content: [] } }) + "\n");
+  assert.equal(chunk(path, 0, statSync(path).size).code, 1);
 });
 
 test("feed/list: create, update, rename, delete, sidechain and request copies", () => {

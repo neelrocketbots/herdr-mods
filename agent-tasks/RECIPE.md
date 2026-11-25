@@ -22,30 +22,40 @@ Code session working in the shown space: done, now, next. Read-only, live.
   - Pending: an 11px ring in `dim`, subject in `muted`, one line.
   - Tooltip on every task: subject, a blank line, description.
 - The rows scroll past 168px (about six).
-- Ended session: label "· last session · ended 2h ago", rows at 0.6 opacity,
+- Ended session: label "· <its label> · ended 2h ago", rows at 0.6 opacity,
   no spinner turning, no activeForm.
-- Label: the Herdr agent title of the Claude pane in that space whose folder
-  is the session's cwd (`agents()` + `panes()`), else the session's `name`.
+- Label: the Herdr agent's title (`agents()` `title`), else the session's
+  `name`. Ended: the label it had when last seen running.
 
 ## How it behaves
 
-- Every 2s while `window()?.visible` isn't false, one read at a time (the read
-  is a stored `Task`, checked with `is_done()`).
-- Sessions: `~/.claude/sessions/<pid>.json`, one per running Claude Code
-  (`{ pid, sessionId, cwd, name, status, updatedAt }`), read by one `sh` (`tr`
-  strips their newlines, so one per line). A file can outlive a crash, so
-  pids are checked with `ps -o pid= -p`.
-- The space: the active one in `spaces()`; another machine's: nothing. Its
-  folder, empty meaning home. A session belongs to the space whose folder is
-  the longest prefix of its cwd, among all this machine's spaces; of the
-  space's sessions, the latest `updatedAt`.
-- Transcript: `~/.claude/projects/<cwd, every non-alphanumeric char → "-">/<sessionId>.jsonl`.
-- Reading it: `stat -f "%z %m"`; when it grew, only bytes `[offset, size)` via
-  `tail -c +N | head -c M`, then `grep -E` for task calls and results and
-  `grep -v '"type":"api-request'`. Those request lines are copies of whole API
-  requests (up to ~150KB) that repeat earlier tool calls; replaying them would
-  undo updates. A smaller file than the offset starts over from 0. Offsets and
-  replay state live in module scope per transcript.
+- Every 2s while `window()?.visible` isn't false, and at once when `render`
+  sees a new active space; one read at a time (a stored `Task`, checked with
+  `is_done()`; a tick during a read runs right after it). A result for a
+  space that's no longer active is dropped. It redraws only when the label,
+  the tasks or the "ended" minute changed.
+- The space: the active one in `spaces()`; another machine's: nothing.
+  `SpaceInfo.folder` is where new terminals start, not where the agent runs,
+  so it isn't used.
+- Its sessions: `agents()` in that space with `app` `"claude-code"`, highest
+  `seq` first. For each, `hc get <address> --json` gives `foreground.pid`,
+  the Claude process; `<config>/sessions/<pid>.json` gives `sessionId` and
+  `cwd`, trying each config folder (`~/.claude`, `~/.claude?*`, listed every
+  minute). The first with a task list wins, and is remembered for the space
+  in localStorage (`agent-tasks.last`: transcript path and label).
+- None: the remembered one, unless it's one of the live ones, if its
+  transcript changed in the last 24h (checked with `stat` before reading).
+- Transcript: `<config>/projects/<cwd, every non-alphanumeric char → "-">/<sessionId>.jsonl`.
+- Reading it (`CHUNK` in `tasks.js`): `stat -f "%z %m"`; when it grew, only
+  bytes `[offset, size)` via `tail -c +N | head -c M`, then `LC_ALL=C grep -E`
+  for task calls and results and `grep -v '"type":"api-request'` (copies of
+  whole API requests, up to ~150KB, that `feed` would ignore anyway; dropping
+  them keeps the output small). If byte `size-1` isn't a newline the read
+  would end mid-line: it exits 3 and the offset stays, so no line is lost.
+  `LC_ALL=C` makes a 129MB file take ~1.5s instead of ~10s. A failed or
+  timed-out read waits 30s before trying that file again. A file smaller than
+  the offset starts over from 0. Offsets and replay state live in module
+  scope per transcript.
 - Replay (`tasks.js`, pure, tested with `node --test`): an `assistant` line's
   `tool_use` `TaskCreate` waits for the `user` line's `tool_result` with the
   same `tool_use_id`, whose `toolUseResult.task.id` is the task id; its
@@ -53,10 +63,9 @@ Code session working in the shown space: done, now, next. Read-only, live.
   `subject`, `description`, `activeForm`) merges; `deleted` drops it; an
   update before its create's result waits. `isSidechain` lines (subagents)
   and unparseable lines are skipped.
-- No running session: the newest `.jsonl` in the space folder's own project
-  dir (`ls -t`), if it changed in the last 24h and has tasks: shown as ended.
-- Block: hidden (`layout.hide` on `props.block`) with nothing to show, shown
-  otherwise, and sized to its content (`layout.resize`). Without
+- Block: the layout block (`props.block`) starts at `"size": { "px": 0 }`,
+  never hidden (a hidden block never starts its mod). `layout.resize` sizes it
+  to the content's height, and to 0 when there's nothing to show. Without
   `props.block` it leaves the layout alone.
 
 ## Watch out
@@ -66,5 +75,7 @@ Code session working in the shown space: done, now, next. Read-only, live.
   next tick.
 - Use the `cx` that `cx.spawn` / `cx.timer` hand in; a click's or render's
   `cx` throws on `notify()` once that call returned.
+- `init` is `init(props, cx)`: `herdr-app check` doesn't catch `init(cx)`,
+  since `checking()` returns before `cx` is used.
 - The transcript format is Claude Code's, undocumented; checked on 2.1.329 to
   2.1.332.

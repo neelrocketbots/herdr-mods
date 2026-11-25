@@ -59,9 +59,8 @@
             }
           },
           "size": {
-            "px": 120
-          },
-          "hidden": true
+            "px": 0
+          }
         },
         {
           "id": "usage",
