@@ -21,13 +21,32 @@ export const CLAUDE_DIRS = `for d in "$HOME"/.claude "$HOME"/.claude?*; do [ -d 
 export const CHUNK = `[ "$(tail -c +$3 "$1" | head -c 1 | od -An -tx1 | tr -d ' \\n')" = 0a ] || exit 3
 tail -c +$(($2 + 1)) "$1" | head -c $(($3 - $2)) | LC_ALL=C grep -E '${TASK_GREP}' | LC_ALL=C grep -v '"type":"api-request'`;
 
+// sh -c FILES sh <transcript>: "size mtime path" per line for the transcript
+// and each of its subagents' (<session>/subagents/agent-*.jsonl) that exist.
+export const FILES = `for f in "$1" "\${1%.jsonl}"/subagents/agent-*.jsonl; do [ -f "$f" ] && stat -f '%z %m %N' "$f"; done; true`;
+
+// FILES' output: [{ size, mtime (ms), path }].
+export function parseFiles(text) {
+  return text.split("\n").map((l) => l.match(/^(\d+) (\d+) (.+)$/)).filter(Boolean)
+    .map(([, size, mtime, path]) => ({ size: Number(size), mtime: Number(mtime) * 1000, path }));
+}
+
+// A subagent's agent-*.meta.json: its description (else its type) and whether
+// it finished.
+export function parseMeta(text) {
+  let m = null;
+  try { m = JSON.parse(text); } catch {}
+  return { label: m?.description || m?.agentType || "subagent", finished: Boolean(m?.finished) };
+}
+
 // The space's Claude Code agents (Herdr's agents()), most recently changed
 // first.
 export function pickAgents(agents, spaceId) {
   return agents.filter((a) => a.space === spaceId && a.app === "claude-code").sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0));
 }
 
-export const newState = () => ({ tasks: new Map(), pending: new Map(), early: new Map() });
+// sidechain: replay a subagent's transcript, whose lines are all isSidechain.
+export const newState = ({ sidechain = false } = {}) => ({ tasks: new Map(), pending: new Map(), early: new Map(), sidechain });
 
 const FIELDS = ["subject", "description", "activeForm", "status"];
 const apply = (task, input) => { for (const k of FIELDS) if (typeof input[k] === "string") task[k] = input[k]; };
@@ -38,7 +57,7 @@ export function feed(state, lines) {
   for (const line of lines) {
     let d;
     try { d = JSON.parse(line); } catch { continue; }
-    if (!d || d.isSidechain || !Array.isArray(d.message?.content)) continue;
+    if (!d || (d.isSidechain && !state.sidechain) || !Array.isArray(d.message?.content)) continue;
     for (const c of d.message.content) {
       if (!c || typeof c !== "object") continue;
       if (d.type === "assistant" && c.type === "tool_use" && c.name === "TaskCreate" && c.input) {

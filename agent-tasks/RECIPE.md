@@ -22,6 +22,11 @@ Code session working in the shown space: done, now, next. Read-only, live.
   - Pending: an 11px ring in `dim`, subject in `muted`, one line.
   - Tooltip on every task: subject, a blank line, description.
 - The rows scroll past 168px (about six).
+- Subagents, under the main list: a row each, the spinner while it has a task
+  in progress (else ✓ when all done, or a ring), "↳ <description>" and
+  `done/total`, its activeForm under it while working; tooltip: its whole
+  list.
+- With no tasks of its own (only subagents'), the header drops bar and count.
 - Ended session: label "· <its label> · ended 2h ago", rows at 0.6 opacity,
   no spinner turning, no activeForm.
 - Label: the Herdr agent's title (`agents()` `title`), else the session's
@@ -29,11 +34,16 @@ Code session working in the shown space: done, now, next. Read-only, live.
 
 ## How it behaves
 
-- Every 2s while `window()?.visible` isn't false, and at once when `render`
-  sees a new active space; one read at a time (a stored `Task`, checked with
-  `is_done()`; a tick during a read runs right after it). A result for a
-  space that's no longer active is dropped. It redraws only when the label,
-  the tasks or the "ended" minute changed.
+- Event-driven loop, started from `render` (and so restarted after a mod
+  reload): read, then wait for whichever comes first: `watchFolder` on the
+  folders of the transcripts read (macOS watches recursively, so subagents'
+  files count), a wake from `render` when the active space or its Claude
+  agents change, or 30s. The watches start before the read, so a write during
+  it still wakes the loop. After each wake it waits 400ms (a throttle: at most
+  one read per 400ms however many writes). While `window()?.visible` is
+  false it only checks every 2s whether the window is back. A result for a
+  space that's no longer active is dropped and read again. It redraws only
+  when the label, the lists or the "ended" minute changed.
 - The space: the active one in `spaces()`; another machine's: nothing.
   `SpaceInfo.folder` is where new terminals start, not where the agent runs,
   so it isn't used.
@@ -43,9 +53,15 @@ Code session working in the shown space: done, now, next. Read-only, live.
   `cwd`, trying each config folder (`~/.claude`, `~/.claude?*`, listed every
   minute). The first with a task list wins, and is remembered for the space
   in localStorage (`agent-tasks.last`: transcript path and label).
-- None: the remembered one, unless it's one of the live ones, if its
-  transcript changed in the last 24h (checked with `stat` before reading).
-- Transcript: `<config>/projects/<cwd, every non-alphanumeric char → "-">/<sessionId>.jsonl`.
+- None: the remembered one, unless it's one of the live ones, if it (or a
+  subagent's file) changed in the last 24h, checked before reading.
+- Transcript: `<config>/projects/<cwd, every non-alphanumeric char → "-">/<sessionId>.jsonl`;
+  its subagents': `<sessionId>/subagents/agent-*.jsonl`, each with an
+  `agent-*.meta.json` (`description`, `agentType`, `finished`). One `sh`
+  (`FILES`) prints size, mtime and path for all of them; subagent files are
+  replayed with `newState({ sidechain: true })` (their lines are all
+  `isSidechain`). Subagents with tasks, newest first, at most 4. Today's
+  Claude Code gives subagents no task tools.
 - Reading it (`CHUNK` in `tasks.js`): `stat -f "%z %m"`; when it grew, only
   bytes `[offset, size)` via `tail -c +N | head -c M`, then `LC_ALL=C grep -E`
   for task calls and results and `grep -v '"type":"api-request'` (copies of

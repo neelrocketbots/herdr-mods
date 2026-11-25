@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, statSync } from "node:fs";
+import { mkdtempSync, writeFileSync, statSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { projectDir, pickAgents, CHUNK, newState, feed, list, summary } from "../mods/agent-tasks/tasks.js";
+import { projectDir, pickAgents, CHUNK, FILES, parseFiles, parseMeta, newState, feed, list, summary } from "../mods/agent-tasks/tasks.js";
 
 const J = (o) => JSON.stringify(o);
 const create = (useId, input, side = false) => J({ type: "assistant", isSidechain: side, message: { content: [{ type: "tool_use", id: useId, name: "TaskCreate", input }] } });
@@ -107,4 +107,31 @@ test("summary counts and groups", () => {
   ]);
   assert.equal(s.done, 2); assert.equal(s.total, 4);
   assert.deepEqual([s.completed, s.current, s.pending].map((g) => g.map((t) => t.id)), [["1", "4"], ["2"], ["3"]]);
+});
+
+test("a subagent state replays sidechain lines; the main one skips them", () => {
+  const lines = [create("s1", { subject: "Sub task", activeForm: "Subbing" }, true),
+    J({ type: "user", isSidechain: true, message: { content: [{ type: "tool_result", tool_use_id: "s1" }] }, toolUseResult: { task: { id: "1", subject: "Sub task" } } })];
+  assert.deepEqual(list(feed(newState({ sidechain: true }), lines)).map((t) => t.subject), ["Sub task"]);
+  assert.deepEqual(list(feed(newState(), lines)), []);
+});
+
+test("FILES lists the transcript and its subagents' (paths with spaces); parseFiles reads it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "agent tasks "));
+  const main = join(dir, "abc.jsonl");
+  writeFileSync(main, "x\n");
+  mkdirSync(join(dir, "abc", "subagents"), { recursive: true });
+  writeFileSync(join(dir, "abc", "subagents", "agent-1.jsonl"), "yy\n");
+  writeFileSync(join(dir, "abc", "subagents", "agent-1.meta.json"), "{}");
+  const out = spawnSync("sh", ["-c", FILES, "sh", main], { encoding: "utf8" }).stdout;
+  const files = parseFiles(out);
+  assert.deepEqual(files.map((f) => [f.path, f.size]), [[main, 2], [join(dir, "abc", "subagents", "agent-1.jsonl"), 3]]);
+  assert.ok(files.every((f) => f.mtime > 1e12)); // ms
+  assert.deepEqual(parseFiles(spawnSync("sh", ["-c", FILES, "sh", join(dir, "none.jsonl")], { encoding: "utf8" }).stdout), []);
+});
+
+test("parseMeta: description and finished, tolerant of junk", () => {
+  assert.deepEqual(parseMeta('{"description":"Check logs","finished":true,"agentType":"x"}'), { label: "Check logs", finished: true });
+  assert.deepEqual(parseMeta('{"agentType":"Explore"}'), { label: "Explore", finished: false });
+  assert.deepEqual(parseMeta("nope"), { label: "subagent", finished: false });
 });

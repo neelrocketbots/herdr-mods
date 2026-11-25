@@ -26,7 +26,7 @@ and a screenshot. Take one or all.
 | [`files-md`](files-md) | Herdr's Files panel, plus rendered markdown (images included), Ctrl/Cmd-clicked terminal file paths opening in it at their line, wrap, and open in your editor |
 | [`changes-editor`](changes-editor) | Herdr's Changes panel, plus open in your editor |
 | [`usage-limits`](usage-limits) | Sidebar: Claude (each account) and Codex rate limits as status-line style gauges with reset times |
-| [`agent-tasks`](agent-tasks) | Sidebar: the task list of the Claude Code session in the space you're in, live (done, now, next) |
+| [`agent-tasks`](agent-tasks) | Sidebar: the task list of the Claude Code session in the space you're in, and its subagents', live (done, now, next) |
 | [`custom-herdr`](custom-herdr) | Layout: Herdr's main layout with all of the above wired in (bundles its own copies of the mods) |
 
 <p>

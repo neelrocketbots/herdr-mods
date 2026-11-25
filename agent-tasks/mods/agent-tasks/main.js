@@ -1,95 +1,121 @@
 // Agent tasks: the task list of the Claude Code session working in the shown
-// space, in a sidebar block. Done / now / next, live, read-only.
+// space, and of its subagents, in a sidebar block. Done / now / next, live,
+// read-only.
 //
 // Which session: the space's Claude Code agents (Herdr's agents(), most
 // recently changed first); for each, `hc get` gives the pid of the Claude
 // running in its terminal, and <config>/sessions/<pid>.json (in ~/.claude or
 // another config folder like ~/.claude2) its sessionId and cwd. The first one
-// with a task list wins. None: the space's last session seen live (remembered
-// per space), faded as "ended", if its transcript changed in the last day.
-// The list: TaskCreate / TaskUpdate calls replayed from the transcript
-// (<config>/projects/<cwd as a dir name>/<sessionId>.jsonl). Only new whole
-// lines are read each tick; a shorter file starts over. Every 2s while the
-// window is visible, and when the space changes. Never writes under ~/.claude.
+// with a task list (its own or a subagent's) wins. None: the space's last
+// session seen live (remembered per space), faded as "ended", if it changed in
+// the last day.
+// The lists: TaskCreate / TaskUpdate calls replayed from the transcript
+// (<config>/projects/<cwd as a dir name>/<sessionId>.jsonl) and each
+// subagent's (<sessionId>/subagents/agent-*.jsonl, named by its .meta.json).
+// Only new whole lines are read; a shorter file starts over.
+// When: event-driven. It watches the transcripts' folder (watchFolder), wakes
+// when the space or its Claude agents change, and checks every 30s anyway;
+// nothing while the window is hidden. Never writes under ~/.claude*.
 //
 // The layout block (props.block) starts at 0px; this sizes it to its content,
 // and back to 0 when there's nothing to show. The header folds it (remembered).
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { exec, hc, readTextFile, theme, run, props, checking, spaces, agents, window } from "herdr";
-import { CHUNK, CLAUDE_DIRS, projectDir, pickAgents, newState, feed, list, summary } from "./tasks.js";
+import { exec, hc, readTextFile, watchFolder, theme, run, props, checking, spaces, agents, window } from "herdr";
+import { CHUNK, CLAUDE_DIRS, FILES, parseFiles, parseMeta, projectDir, pickAgents, newState, feed, list, summary } from "./tasks.js";
 
-const TICK_MS = 2000;
+const FALLBACK_MS = 30_000;           // check this often even without events
+const SETTLE_MS = 400;                // at most one read per this, however many writes
+const HIDDEN_MS = 2000;               // how often to look whether the window is back
 const DIRS_MS = 60_000;               // look for Claude config folders this often
 const RETRY_MS = 30_000;              // after a failed or timed-out read
 const ENDED_MS = 24 * 3600_000;
+const SUBS_MAX = 4;                   // subagents shown, most recent first
 const LIST_MAX = 168;                 // px of rows before the list scrolls (~6)
 const COLLAPSED_KEY = "agent-tasks.collapsed";
 const LAST_KEY = "agent-tasks.last";  // { spaceId: { path, label } }
 
 // Per transcript: bytes read so far, the replay state, when to retry after a
-// failure. Module scope, so it survives this view being rebuilt.
+// failure; per subagent meta file: its mtime and contents. Module scope, so
+// they survive this view being rebuilt.
 const reads = new Map();
+const metas = new Map();
 
 const agoText = (ms) => { const m = Math.round((Date.now() - ms) / 60_000); return m < 60 ? `${Math.max(1, m)}m` : `${Math.round(m / 60)}h`; };
 const activeSpace = () => spaces().find((s) => s.active) ?? null;
+const folderOf = (path) => path.slice(0, path.lastIndexOf("/"));
+const never = new Promise(() => {});
 
 export default class AgentTasks extends View {
   init(_props, cx) {
-    this.view = null;        // { label, endedAt, tasks } or null
+    this.view = null;        // { label, endedAt, tasks, subs: [{ label, finished, tasks }] } or null
     this.sig = null;         // what's drawn, to skip redraws that change nothing
     this.showDone = false;
     this.px = null;
-    this.spaceId = null;
+    this.key = null;         // active space + its Claude agents, as of the last render
     this.dirs = null; this.dirsAt = 0;
     try { this.collapsed = localStorage.getItem(COLLAPSED_KEY) === "1"; } catch { this.collapsed = false; }
     try { this.last = JSON.parse(localStorage.getItem(LAST_KEY) ?? "{}") ?? {}; } catch { this.last = {}; }
-    if (checking()) return;
-    cx.timer.every(TICK_MS, (cx) => this.tick(cx));
-    this.tick(cx);
   }
 
-  tick(cx) {
-    if (window()?.visible === false) return;
-    if (this.task && !this.task.is_done()) { this.again = true; return; } // one read at a time
-    this.again = false;
-    this.task = cx.spawn(async (cx) => {
+  // Read, then wait for a change in a watched folder, a wake from render, or
+  // the fallback timer; again. Started (and restarted after a mod reload)
+  // from render.
+  async run(cx) {
+    let dirs = [];
+    for (;;) {
+      if (window()?.visible === false) { await cx.sleep(HIDDEN_MS); continue; }
+      this.dirty = false;
+      // Watch before reading, so a write during the read still wakes us.
+      const watches = new Map(dirs.map((dir) => [dir, watchFolder(dir)]));
       try {
-        const { spaceId, view } = await this.load();
-        if (activeSpace()?.id !== spaceId) return; // switched meanwhile: the next read has it
-        const sig = view ? JSON.stringify([view.label, view.endedAt && agoText(view.endedAt), view.tasks]) : "";
-        if (sig !== this.sig) {
-          this.sig = sig; this.view = view;
-          if (!view) this.size(0);
-          cx.notify();
+        const r = await this.load();
+        dirs = r.watch;
+        for (const dir of dirs) if (!watches.has(dir)) watches.set(dir, watchFolder(dir));
+        if (activeSpace()?.id !== r.spaceId) this.dirty = true; // switched meanwhile: read again
+        else {
+          const sig = r.view ? JSON.stringify([r.view.label, r.view.endedAt && agoText(r.view.endedAt), r.view.tasks, r.view.subs]) : "";
+          if (sig !== this.sig) {
+            this.sig = sig; this.view = r.view;
+            if (!r.view) this.size(0);
+            cx.notify();
+          }
         }
       } catch {} // keep the last list
-      if (this.again) this.tick(cx);
-    });
+      if (!this.dirty) {
+        const woke = new Promise((resolve) => { this.wake = resolve; });
+        await Promise.race([woke, cx.sleep(FALLBACK_MS), ...[...watches.values()].map((w) => w.catch(() => never))]);
+        this.wake = null;
+      }
+      for (const w of watches.values()) w.cancel();
+      // Throttle: a burst of writes costs at most one read per SETTLE_MS.
+      await cx.sleep(SETTLE_MS);
+    }
   }
 
   async load() {
     const space = activeSpace();
-    if (!space || space.machine) return { spaceId: space?.id ?? null, view: null };
+    if (!space || space.machine) return { spaceId: space?.id ?? null, view: null, watch: [] };
     if (!this.dirs || Date.now() - this.dirsAt > DIRS_MS) {
       const r = await exec("sh", ["-c", CLAUDE_DIRS], { timeout: 5000 });
       this.dirs = r.stdout.split("\n").filter(Boolean); this.dirsAt = Date.now();
     }
-    const live = new Set();
+    const live = new Set(), watch = new Set();
     for (const agent of pickAgents(agents(), space.id)) {
       const session = await this.session(agent.address);
       if (!session) continue;
-      live.add(session.path);
-      const { tasks } = await this.read(session.path);
-      if (!tasks.length) continue;
+      live.add(session.path); watch.add(folderOf(session.path));
+      const lists = await this.lists(session.path);
+      if (!lists) continue;
       const label = agent.title || session.name || "Claude Code";
       this.remember(space.id, { path: session.path, label });
-      return { spaceId: space.id, view: { label, endedAt: null, tasks } };
+      return { spaceId: space.id, view: { label, endedAt: null, ...lists }, watch: [...watch] };
     }
     const last = this.last[space.id];
-    if (!last || live.has(last.path)) return { spaceId: space.id, view: null };
-    const { tasks, mtime } = await this.read(last.path, ENDED_MS);
-    return { spaceId: space.id, view: tasks.length ? { label: last.label, endedAt: mtime, tasks } : null };
+    if (!last || live.has(last.path)) return { spaceId: space.id, view: null, watch: [...watch] };
+    watch.add(folderOf(last.path));
+    const lists = await this.lists(last.path, ENDED_MS);
+    return { spaceId: space.id, view: lists ? { label: last.label, endedAt: lists.mtime, ...lists } : null, watch: [...watch] };
   }
 
   // The Claude session in terminal `address`: { path, name } or null.
@@ -108,6 +134,36 @@ export default class AgentTasks extends View {
     return null;
   }
 
+  // The session's tasks and its subagents' (those with tasks, newest first):
+  // { tasks, subs, mtime } or null when there are none. Older than maxAgeMs
+  // (its newest file): null, without reading.
+  async lists(path, maxAgeMs = Infinity) {
+    const r = await exec("sh", ["-c", FILES, "sh", path], { timeout: 5000 });
+    const files = parseFiles(r.stdout);
+    const main = files.find((f) => f.path === path);
+    if (!main) return null;
+    const mtime = Math.max(...files.map((f) => f.mtime));
+    if (Date.now() - mtime > maxAgeMs) return null;
+    const tasks = await this.read(main, false);
+    const subs = [];
+    for (const f of files.filter((f) => f !== main).sort((a, b) => b.mtime - a.mtime)) {
+      const subTasks = await this.read(f, true);
+      if (!subTasks.length) continue;
+      subs.push({ ...(await this.meta(f)), tasks: subTasks });
+      if (subs.length === SUBS_MAX) break;
+    }
+    return tasks.length || subs.length ? { tasks, subs, mtime } : null;
+  }
+
+  async meta(file) {
+    const metaPath = file.path.replace(/\.jsonl$/, ".meta.json");
+    const hit = metas.get(metaPath);
+    if (hit && hit.mtime === file.mtime) return hit.meta;
+    const meta = parseMeta((await readTextFile(metaPath).catch(() => null)) ?? "");
+    metas.set(metaPath, { mtime: file.mtime, meta });
+    return meta;
+  }
+
   remember(spaceId, entry) {
     const was = this.last[spaceId];
     if (was?.path === entry.path && was?.label === entry.label) return;
@@ -116,24 +172,19 @@ export default class AgentTasks extends View {
     try { localStorage.setItem(LAST_KEY, JSON.stringify(this.last)); } catch {}
   }
 
-  // The transcript's tasks, reading only whole lines added since the last
-  // call. Older than maxAgeMs: none, without reading it.
-  async read(path, maxAgeMs = Infinity) {
-    const st = await exec("stat", ["-f", "%z %m", path], { timeout: 5000 });
-    if (st.code !== 0) return { tasks: [], mtime: 0 };
-    const [size, mtimeS] = st.stdout.trim().split(/\s+/).map(Number);
-    const mtime = mtimeS * 1000;
-    if (Date.now() - mtime > maxAgeMs) return { tasks: [], mtime };
+  // A transcript's tasks ({ path, size } from FILES), reading only whole lines
+  // added since the last call. sidechain: a subagent's.
+  async read({ path, size }, sidechain) {
     let r = reads.get(path);
-    if (!r || size < r.offset) { r = { offset: 0, state: newState(), retryAt: 0 }; reads.set(path, r); }
+    if (!r || size < r.offset) { r = { offset: 0, state: newState({ sidechain }), retryAt: 0 }; reads.set(path, r); }
     if (size > r.offset && Date.now() >= r.retryAt) {
       try {
         const g = await exec("sh", ["-c", CHUNK, "sh", path, String(r.offset), String(size)], { timeout: 15_000 });
         if (g.code === 0 || g.code === 1) { feed(r.state, g.stdout.split("\n")); r.offset = size; } // 1: no task lines
-        else if (g.code !== 3) r.retryAt = Date.now() + RETRY_MS;                                // 3: mid-line, next tick
+        else if (g.code !== 3) r.retryAt = Date.now() + RETRY_MS;                                // 3: mid-line, next time
       } catch { r.retryAt = Date.now() + RETRY_MS; }
     }
-    return { tasks: list(r.state), mtime };
+    return list(r.state);
   }
 
   size(px) {
@@ -154,9 +205,13 @@ export default class AgentTasks extends View {
   }
 
   render(cx) {
-    // A new space: read it now rather than at the next tick.
-    const sid = activeSpace()?.id ?? null;
-    if (sid !== this.spaceId) { this.spaceId = sid; if (!checking()) this.tick(cx); }
+    if (!checking()) {
+      if (!(this.loop && !this.loop.is_done())) this.loop = cx.spawn((cx) => this.run(cx));
+      // The space or its Claude agents changed: read now.
+      const sid = activeSpace()?.id ?? null;
+      const key = `${sid}|${pickAgents(agents(), sid).map((a) => a.address).join(",")}`;
+      if (key !== this.key) { this.key = key; this.dirty = true; this.wake?.(); }
+    }
     const t = theme(), v = this.view;
     const root = v_flex().id("agent-tasks").w_full().bg(t.chrome).text_color(t.foreground);
     if (!v) return root;
@@ -191,16 +246,36 @@ export default class AgentTasks extends View {
       .on_click((_e, cx) => this.toggle(cx))
       .child(div().flex_none().child("Tasks"))
       .child(div().flex_1().min_w(0).truncate().child(faded ? `· ${v.label} · ended ${agoText(v.endedAt)} ago` : `· ${v.label}`))
-      .child(div().flex_none().w(44).h(3).rounded(2).bg(t.input).overflow_hidden()
-        .child(div().h_full().w(Math.round((44 * pct) / 100)).bg(t.ansi2)))
-      .child(div().flex_none().child(`${s.done}/${s.total}`))
+      .when(s.total > 0, (el) => el
+        .child(div().flex_none().w(44).h(3).rounded(2).bg(t.input).overflow_hidden()
+          .child(div().h_full().w(Math.round((44 * pct) / 100)).bg(t.ansi2)))
+        .child(div().flex_none().child(`${s.done}/${s.total}`)))
       .child(div().flex_none().child(this.collapsed ? "▸" : "▾"));
+
+    // A subagent: one line, its description and count; while it works, its
+    // task in progress under it. Tooltip: its whole list.
+    const MARK = { completed: "✓", in_progress: "◐" };
+    const subRow = (sub, i) => {
+      const ss = summary(sub.tasks), now = sub.finished || faded ? null : ss.current[0];
+      return h_flex().id(`at-s-${i}`).flex_none().px(8).py(3).gap(8).items_start().rounded(6).text_size(12)
+        .tooltip([sub.label, "", ...sub.tasks.map((x) => `${MARK[x.status] ?? "○"} ${x.subject}`)].join("\n"))
+        .child(mark(now ? svg("mods/agent-tasks/spinner.svg").size(11).text_color(working).spin(900)
+          : ss.done === ss.total ? div().text_size(10).text_color(t.ansi2).child("✓") : ring()))
+        .child(v_flex().flex_1().min_w(0).gap(1)
+          .child(h_flex().gap(6).items_center()
+            .child(div().flex_none().text_size(11).text_color(t.dim).child("↳"))
+            .child(div().flex_1().min_w(0).truncate().text_color(now ? t.muted : t.dim).child(sub.label))
+            .child(div().flex_none().text_size(11).text_color(t.dim).child(`${ss.done}/${ss.total}`)))
+          .when(Boolean(now), (el) => el.child(div().truncate().text_size(11).text_color(working)
+            .child(now.activeForm ? `${now.activeForm}…` : now.subject))));
+    };
 
     const rows = [
       ...(s.done ? [doneRow] : []),
       ...(this.showDone ? s.completed.map(doneTask) : []),
       ...s.current.map(nowTask),
       ...s.pending.map(nextTask),
+      ...(v.subs ?? []).map(subRow),
     ];
     return root.child(v_flex().id("at-content").w_full().px(10).pt(6).pb(6).gap(1).border_t(1).border_color(t.border)
       .on_size_change((size) => this.fit(size.height))

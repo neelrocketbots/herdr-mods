@@ -21,9 +21,25 @@ reads the list Claude Code already keeps, so there's nothing to set up.
   Click it to fold the block to just that line (remembered).
 - **Ended**: the space's last session with a task list, once it's no longer
   running, if it changed in the last day: its last list, faded, "ended 2h ago".
+- **Subagents**: a row per subagent with a task list (its description, its
+  count, and what it's doing while it works), up to four, newest first.
+  Today's Claude Code doesn't give subagents the task tools, so these show
+  only once it does.
 - **Nothing to show** (no session, or no task list): the block shrinks to 0.
-- Follows each change within about 2 seconds and switches with the space at
-  once; nothing while the Herdr window is minimized, hidden or covered.
+- **Live, by events**: it watches the session's transcript folder, so a change
+  shows as Claude writes it (at most about two reads a second), and it
+  switches with the space at once. It also checks every 30 seconds, and does
+  nothing while the Herdr window is minimized, hidden or covered.
+
+**Turn on Claude Code's task list.** Recent Claude Code versions ship it off.
+Add both to the `env` of your Claude settings (`~/.claude/settings.json`, and
+any other config folder you use):
+
+```json
+"env": { "CLAUDE_CODE_ENABLE_TASKS": "1", "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1" }
+```
+
+Claude then uses it for multi-step work, or when you ask it to track steps.
 
 ## Install
 
