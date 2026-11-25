@@ -132,6 +132,11 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 
 ## Watch out
 
+- Saving a mod file reloads it in place: its tasks stop, but this copy's state
+  can survive. A busy flag set by a task that died would spin for ever, so each
+  busy job keeps its task (`this.busyTask`) and `render` drops a busy flag whose
+  task is gone. Likewise a list load cut off by a reload (`this.followTask`
+  done, `this.followed` not the folder) is started again.
 - A content-sized dialog gives a list no height, so `max_h` with
   `overflow_y_scrollbar` never scrolls. Use a `relative()` box with an explicit
   `h(...)`, an `absolute` `size_full` list with `overflow_y_scroll`, and a

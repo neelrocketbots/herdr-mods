@@ -215,21 +215,21 @@ export default class IssueWorktree extends View {
   // repo again just reloads (PRs stay cached for PR_TTL).
   follow(cwd, cx) {
     this.cwd = cwd;
-    if (!cwd) { this.repo = null; this.repoError = "No folder: focus a terminal inside a repo first"; this.list = []; cx.notify(); return; }
-    cx.spawn(async (cx) => {
+    if (!cwd) { this.repo = null; this.repoError = "No folder: focus a terminal inside a repo first"; this.list = []; this.followed = cwd; cx.notify(); return; }
+    this.followTask = cx.spawn(async (cx) => {
       let repo;
       try {
         repo = await repoOf(cwd);
       } catch (e) {
         if (this.cwd !== cwd) return;
-        this.repo = null; this.repoError = String(e?.message ?? e); this.list = [];
+        this.repo = null; this.repoError = String(e?.message ?? e); this.list = []; this.followed = cwd;
         cx.notify();
         return;
       }
       if (this.cwd !== cwd) return;
       if (repo.root !== this.repo?.root) { this.list = undefined; this.confirm = null; this.renaming = null; }
       this.repo = repo; this.repoError = null;
-      await this.reload(cx);
+      try { await this.reload(cx); } finally { this.followed = cwd; } // a failed reload mustn't retry on every render
       this.loadedAt = Date.now();
       // Opened from the top bar's "merged · clean up": go straight to its Remove.
       const target = props()?.remove && this.list.find((c) => c.path === props().remove);
@@ -243,7 +243,9 @@ export default class IssueWorktree extends View {
     const shown = this.visible();
     if (shown) {
       const cwd = focused()?.cwd ?? this.cwd ?? spaces().find((s) => s.active)?.folder;
-      if (cwd !== this.cwd || (!this.onScreen && Date.now() - this.loadedAt > PR_TTL)) this.follow(cwd, cx);
+      // Also again when the last follow never finished (a mod reload stops it).
+      const lost = this.followed !== cwd && !(this.followTask && !this.followTask.is_done());
+      if (cwd !== this.cwd || lost || (!this.onScreen && Date.now() - this.loadedAt > PR_TTL)) this.follow(cwd, cx);
       if (!this.onScreen) cx.timer.after(50, () => this.issueInput.focus());
       const want = shared(REMOVE_KEY);
       const target = want && this.list?.find((c) => c.path === want);
@@ -322,7 +324,7 @@ export default class IssueWorktree extends View {
     const branchChanges = Boolean(r.branch) && name !== r.branch, moves = r.move && dir !== r.path;
     if (!branchChanges && !moves) { this.renaming = null; cx.notify(); return; }
     this.busy = "Renaming…"; this.busyPath = r.path; this.error = null; cx.notify();
-    cx.spawn(async (cx) => {
+    this.busyTask = cx.spawn(async (cx) => {
       try {
         if (branchChanges) {
           const ok = await git(["check-ref-format", "--branch", name], this.repo.root);
@@ -368,7 +370,7 @@ export default class IssueWorktree extends View {
       cx.notify();
     };
     cx.timer.after(20_000, () => finish(null, "Checking this worktree took too long (git status or lsof didn't answer). Try Remove again."));
-    cx.spawn(async () => {
+    this.busyTask = cx.spawn(async () => {
       try {
         const [status, running] = await Promise.all([
           git(["--no-optional-locks", "status", "--porcelain"], c.path, 15_000).catch((e) => ({ code: -1, stdout: "", stderr: String(e?.message ?? e) })),
@@ -387,7 +389,7 @@ export default class IssueWorktree extends View {
     this.confirm = null;
     this.busy = "Removing…"; this.busyPath = c.path;
     cx.notify();
-    cx.spawn(async (cx) => {
+    this.busyTask = cx.spawn(async (cx) => {
       try {
         const s = spaceOf(c.path, this.list ?? []);
         if (s) run("space.close", { id: s.id, confirmed: true });
@@ -450,7 +452,7 @@ export default class IssueWorktree extends View {
     const { gitDir, root } = this.repo, { branch, folder } = name, dir = `${root}/.worktrees/${folder}`;
     this.busy = "Checking…"; this.error = null; cx.notify();
 
-    cx.spawn(async (cx) => {
+    this.busyTask = cx.spawn(async (cx) => {
       const step = (text) => { this.busy = text; cx.notify(); };
       try {
         if ((await exec("test", ["-d", dir])).code === 0) { this.open(dir); return; }
@@ -576,6 +578,9 @@ export default class IssueWorktree extends View {
   }
 
   render(cx) {
+    // A busy flag with no live task behind it (a mod reload stops tasks but can
+    // keep this state) would spin for ever: drop it.
+    if (this.busy && !(this.busyTask && !this.busyTask.is_done())) { this.busy = null; this.busyPath = null; this.checking = null; }
     if (this.panel() && !checking()) this.track(cx);
     const t = theme(), panel = this.panel();
     const label = (text) => div().pt(14).pb(6).text_size(11.5).text_color(t.dim).child(text);
