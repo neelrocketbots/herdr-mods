@@ -20,7 +20,15 @@ of Herdr's top bar, plus a button that opens the folder in your editor.
 | editor | always, for local folders | opens the folder in your editor |
 
 CI dot: green passing, yellow running, red failing. The tooltip lists the failing
-checks. Lookups are cached on disk, so the buttons show at once after a restart.
+checks. Lookups are cached on disk, so the buttons show at once after a restart,
+and paused while the Herdr window is minimized, hidden or covered.
+
+## Command palette
+
+**⌘⇧P** lists these, all starting with `Custom:` so they're easy to find:
+New worktree, Toggle Worktrees panel, Toggle PRs panel, Open repo on GitHub,
+Open this branch's PR, Open this branch's Linear issue, Open folder in editor.
+They act on the focused terminal's folder, like the buttons.
 
 ## Install
 

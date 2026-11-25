@@ -18,6 +18,8 @@ layouts without that slot.
   of their own.
 - Refreshes every 3 minutes while shown, every 10 while hidden (for the count on
   `quick-links`' PRs button), and when you open it with data over a minute old.
+  Nothing while the Herdr window is minimized, hidden or covered; it catches up
+  when the window is back.
   The last result is kept on disk.
 
 ## Install

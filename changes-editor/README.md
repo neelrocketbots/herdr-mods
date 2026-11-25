@@ -9,8 +9,9 @@ changed file.
 
 - **Open in &lt;editor&gt;** next to the `+42 −7` totals, for the selected file.
   Hidden for deleted files and repos on other machines.
-- Everything else is Herdr's Changes panel as shipped: changed files, their diffs,
-  and committing from the panel.
+- Everything else is Herdr's Changes panel as shipped (0.1.18): changed files,
+  their diffs in your terminal font size, committing from the panel, and one git
+  scan shared with Files that pauses while Herdr isn't focused.
 
 It's a copy of Herdr's shipped `changes` mod (Apache-2.0), because Herdr rewrites
 its own mods on every start.

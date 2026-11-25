@@ -39,7 +39,8 @@ shown as a small gauge with its reset time, like a Claude Code status line.
 
 ## How it behaves
 
-- Claude and Codex, every 5 minutes. Claude: `sh` lists `~/.claude` and `~/.claude?*` folders.
+- Claude and Codex, every 5 minutes, skipped while `window()?.visible` is
+  false; `render` polls once the window is back. Claude: `sh` lists `~/.claude` and `~/.claude?*` folders.
   For each, a shell finds the Keychain item `Claude Code-credentials` (plus
   `-<first 8 hex of sha256(folder path)>` for any folder but `~/.claude`), pulls
   `claudeAiOauth.accessToken` and `expiresAt` with `plutil`, skips an expired

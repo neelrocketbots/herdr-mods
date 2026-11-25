@@ -128,7 +128,7 @@ async function repoOf(cwd) {
 }
 
 // The repo's worktrees (not the main checkout), most recently committed first:
-// { path, branch, at }.
+// { path, branch, at, locked } (locked: null, or the lock's reason, maybe "").
 async function worktrees(root) {
   const list = await git(["worktree", "list", "--porcelain"], root);
   if (list.code !== 0) return [];
@@ -140,7 +140,8 @@ async function worktrees(root) {
     const path = lines.find((l) => l.startsWith("worktree "))?.slice(9);
     if (i === 0 || !path || lines.some((l) => l === "bare" || l.startsWith("prunable"))) continue;
     const branch = lines.find((l) => l.startsWith("branch "))?.slice(7).replace(/^refs\/heads\//, "") ?? null;
-    out.push({ path, branch, at: branch ? (when.get(branch) ?? 0) : 0 });
+    const lock = lines.find((l) => l === "locked" || l.startsWith("locked "));
+    out.push({ path, branch, at: branch ? (when.get(branch) ?? 0) : 0, locked: lock === undefined ? null : lock.slice(7) });
   }
   return out.sort((a, b) => b.at - a.at);
 }
@@ -359,14 +360,14 @@ export default class IssueWorktree extends View {
     cx.spawn(async (cx) => {
       const [status, running] = await Promise.all([git(["status", "--porcelain"], c.path), runningIn(c.path)]);
       this.busy = null; this.busyPath = null;
-      this.confirm = { path: c.path, dirty: status.code !== 0 || status.stdout.trim() !== "", running };
+      this.confirm = { path: c.path, dirty: status.code !== 0 || status.stdout.trim() !== "", running, locked: c.locked };
       cx.notify();
     });
   }
 
   // Close its space, remove the worktree, delete its local branch.
   remove(c, cx) {
-    const dirty = this.confirm?.dirty;
+    const dirty = this.confirm?.dirty, locked = this.confirm?.locked != null;
     this.confirm = null;
     this.busy = "Removing…"; this.busyPath = c.path;
     cx.notify();
@@ -374,6 +375,8 @@ export default class IssueWorktree extends View {
       try {
         const s = spaceOf(c.path, this.list ?? []);
         if (s) run("space.close", { id: s.id, confirmed: true });
+        // Locked (git worktree lock): the confirm said so, and Remove means unlock first.
+        if (locked) await git(["worktree", "unlock", c.path], this.repo.root);
         const rm = await git(["worktree", "remove", ...(dirty ? ["--force"] : []), c.path], this.repo.root);
         if (rm.code !== 0) {
           // A removal that stopped partway (a dev server still running in the
@@ -499,6 +502,8 @@ export default class IssueWorktree extends View {
             .on_click((_e, cx) => { cx.stop_propagation(); exec("open", [c.status.url]).catch(() => {}); })
             .child(svg("mods/issue-worktree/linear.svg").size(12).text_color(c.status.color ?? t[STATUS_COLOR[c.status.type] ?? "muted"]))
             .child(c.status.state)))
+          .when(c.locked != null, (el) => el.child(div().id(`iw-lock-${i}`).flex_none().text_size(11).text_color(t.blocked)
+            .tooltip(c.locked ? `Locked: ${c.locked}` : "Locked (git worktree lock)").child("locked")))
           .when(Boolean(there), (el) => el.child(div().flex_none().text_size(11).text_color(t.accent).child("open")))
           .when(!there && c.at > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(ago(c.at)))))
         .child(h_flex().gap(2).items_center()
@@ -510,8 +515,9 @@ export default class IssueWorktree extends View {
             .child(action(`iw-rn-${i}`, "rename", (cx) => this.startRename(c, cx)))
             .child(action(`iw-rm-${i}`, "remove", (cx) => this.askRemove(c, cx), t.ansi1))))
         .when(confirming, (el) => el.child(h_flex().pt(6).gap(6).items_center()
-          .child(div().flex_1().min_w(0).text_size(11.5).text_color(this.confirm.dirty || this.confirm.running?.length ? t.ansi1 : t.muted)
+          .child(div().flex_1().min_w(0).text_size(11.5).text_color(this.confirm.dirty || this.confirm.running?.length || this.confirm.locked != null ? t.ansi1 : t.muted)
             .child((this.confirm.running?.length ? `Still running in it: ${this.confirm.running.join(", ")}. Stop them first. ` : "") +
+              (this.confirm.locked != null ? `It's locked${this.confirm.locked ? ` (${this.confirm.locked})` : ""}: Remove unlocks it first. ` : "") +
               (this.confirm.dirty ? "Uncommitted changes will be lost. Remove anyway?" : `Remove the worktree${c.branch ? " and its local branch" : ""}${there ? ", and close its space" : ""}?`)))
           .child(action(`iw-rm-no-${i}`, "cancel", (cx) => { this.confirm = null; cx.notify(); }))
           .child(div().id(`iw-rm-yes-${i}`).flex_none().px(8).py(2).rounded(5).text_size(11).bg(t.ansi1).text_color(t.background).cursor_pointer()

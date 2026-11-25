@@ -28,7 +28,9 @@ its PR and CI, ready to open, rename or remove.
 - **remove**: removes the worktree, its local branch and its space, after a
   confirm that warns about uncommitted changes and names anything still running
   in the folder (a dev server, a shell). If a removal stopped partway, the next
-  one clears the leftover files (only inside `.worktrees/`). Removing or moving
+  one clears the leftover files (only inside `.worktrees/`). A worktree locked
+  with `git worktree lock` shows **locked** (its reason in the tooltip); the
+  confirm says so, and Remove unlocks it first. Removing or moving
   a nested worktree also deletes the parent folders it leaves empty, never
   `.worktrees/` itself.
 

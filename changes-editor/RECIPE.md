@@ -24,7 +24,9 @@ works as in Herdr's panel.
 
 ## How it behaves
 
-- The panel follows the focused terminal's repo and refreshes every 10s. It
+- The panel follows the focused terminal's repo and refreshes as Herdr
+  0.1.18's does: a folder watch plus a 10s poll, one `git status` shared with
+  Files, longer waits after slow scans, none while the window isn't focused. It
   shows up to 1,000 changed files.
 - Selecting a file shows its diff against `HEAD`.
 - Commit runs `git add -A` and `git commit -m <message>` in the repo.

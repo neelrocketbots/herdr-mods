@@ -21,7 +21,7 @@
 // Last answers are kept in localStorage, so rows show at once after a restart.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { exec, home, theme, run, props, checking, knownAgents } from "herdr";
+import { exec, home, theme, run, props, checking, knownAgents, window } from "herdr";
 
 const CODEX_DIR = ".codex/sessions"; // under home
 const POLL_MS = 5 * 60_000;
@@ -146,10 +146,9 @@ export default class UsageLimits extends View {
       for (const p of await knownAgents().catch(() => [])) if (p.key === "claude" || p.key === "codex") this.icons[p.key] = p;
       cx.notify();
     });
-    this.pollClaude(cx);
-    this.pollCodex(cx);
-    cx.timer.every(POLL_MS, (cx) => { this.pollClaude(cx); this.pollCodex(cx); });
-    cx.timer.every(60_000, (cx) => cx.notify()); // countdowns
+    this.poll(cx);
+    cx.timer.every(POLL_MS, (cx) => this.poll(cx));
+    cx.timer.every(60_000, (cx) => { if (window()?.visible !== false) cx.notify(); }); // countdowns
   }
 
   set(row, cx) {
@@ -157,6 +156,14 @@ export default class UsageLimits extends View {
     this.rows[row.key] = row;
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(this.rows)); } catch {}
     cx.notify();
+  }
+
+  // Window minimized, hidden or covered: skip, and poll once it's back (render).
+  poll(cx) {
+    if (window()?.visible === false) { this.missed = true; return; }
+    this.missed = false;
+    this.pollClaude(cx);
+    this.pollCodex(cx);
   }
 
   pollClaude(cx) {
@@ -213,7 +220,8 @@ export default class UsageLimits extends View {
     run("layout.resize", { id: props()?.block ?? "usage", px });
   }
 
-  render() {
+  render(cx) {
+    if (this.missed && window()?.visible) this.poll(cx);
     const t = theme();
     const now = Date.now();
     const live = (l) => (l.resets && l.resets <= now ? { ...l, pct: 0 } : l);

@@ -95,6 +95,10 @@ with its pull request and CI, an open-in-editor button, rename and remove.
   "Uncommitted changes will be lost. Remove anyway?". Confirming closes the
   space (`space.close` confirmed), runs `git worktree remove` (`--force` when
   dirty) and `git branch -D`. A failed branch delete becomes a warning toast.
+  A locked worktree (`locked [reason]` in `git worktree list --porcelain`)
+  shows "locked" in `blocked` on its row (the reason as tooltip); its confirm
+  adds "It's locked (reason): Remove unlocks it first." in `ansi1`, and
+  confirming runs `git worktree unlock` before the remove.
   After a remove or move, `rmdir` walks up from the old folder's parent while
   it's inside `.worktrees/` (not `.worktrees/` itself), stopping at the first
   folder that isn't empty.

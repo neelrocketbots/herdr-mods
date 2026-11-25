@@ -43,7 +43,8 @@ layouts without that slot.
   Both are sorted newest first.
 - Refresh: every 3 minutes while it's on screen, every 10 minutes while hidden
   (checked every 30s), on opening it when the data is over a minute old, and on
-  ↻. It's on screen when it's a dialog, or the layout's `panel` is shown with
+  ↻. Not while `window()?.visible` is false (minimized, hidden, covered):
+  `render` checks again once the window is back. It's on screen when it's a dialog, or the layout's `panel` is shown with
   `panel-body` on `prs`.
 - The last result is saved in localStorage (`pr-inbox.cache.v1`) and shown at
   once on start.

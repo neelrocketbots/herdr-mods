@@ -100,15 +100,31 @@ export default class QuickLinks extends View {
     cx.timer.every(SETTINGS_MS, (cx) => this.loadSettings(cx));
     cx.timer.every(TICK_MS, (cx) => this.tick(cx));
     this.tick(cx);
-    // Key commands: "quick-links.worktrees" (cmd-alt-n in custom-herdr) does
-    // what the Worktree button does, for the focused terminal's folder.
+    // Key and palette commands (mod.json "palette"; cmd-alt-n in custom-herdr
+    // is "quick-links.worktrees"), for the focused terminal's folder.
     cx.spawn(async (cx) => {
       for (;;) {
-        const c = await nextCommand();
-        if (c === "worktrees") this.activate({ dialog: "issue-worktree", cwd: focused()?.cwd ?? undefined });
+        this.command(await nextCommand());
         cx.notify();
       }
     });
+  }
+
+  command(c) {
+    const cwd = focused()?.cwd ?? undefined;
+    const link = (test) => this.links.find((l) => test(l.id));
+    const open = (l, what) => l ? openUrl(l.page ?? l.url) : notify({ title: `No ${what} for this folder`, level: "info" });
+    if (c === "worktrees") this.activate({ dialog: "issue-worktree", cwd });
+    else if (c === "new-worktree") {
+      if (this.slot("worktrees").has) this.showSlot("worktrees", false);
+      else openOverlay({ mod: "issue-worktree", kind: "dialog", width: 460, props: { cwd } });
+    } else if (c === "prs") {
+      if (this.slot("prs").has) this.showSlot("prs", true);
+      else run("mod.open", { name: "pr-inbox" });
+    } else if (c === "repo") open(link((id) => id === "repo"), "GitHub repo");
+    else if (c === "pr") open(link((id) => id === "pr") ?? link((id) => id.startsWith("pr-issue-")), "pull request");
+    else if (c === "linear") open(link((id) => id === "linear"), "Linear issue");
+    else if (c === "editor" && cwd) openInEditor(cwd);
   }
 
   // Settings, and which companion mods are installed: the Worktree and
@@ -184,6 +200,8 @@ export default class QuickLinks extends View {
   }
 
   tick(cx) {
+    // Window minimized, hidden or covered: no git or GitHub lookups until it's back.
+    if (window()?.visible === false) return;
     const ctx = this.context();
     if (ctx === undefined) return;
     const key = ctx ? `${ctx.machine ?? ""}|${ctx.cwd}|${ctx.branch ?? ""}` : "";
@@ -373,7 +391,7 @@ export default class QuickLinks extends View {
       const state = pr.isDraft && pr.state === "OPEN" ? "draft" : pr.state.toLowerCase();
       const ci = pr.state === "OPEN" ? ciSummary(pr.statusCheckRollup) : null;
       const ciTip = ci ? ` · ${CI_WORD[ci.state]}${ci.failed ? `: ${ci.failed.join(", ")} (click opens the failing run)` : ""}` : "";
-      return { id, icon: "pr", label, url: ci?.state === "failing" && ci.url ? ci.url : pr.url,
+      return { id, icon: "pr", label, page: pr.url, url: ci?.state === "failing" && ci.url ? ci.url : pr.url,
         color: pr.isDraft ? "dim" : PR_COLOR[pr.state] ?? "muted", dot: ci ? CI_COLOR[ci.state] : null,
         tip: `${state}: ${pr.title}${ciTip}${note}` };
     };
