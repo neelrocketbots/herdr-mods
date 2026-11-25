@@ -23,7 +23,8 @@ tail -c +$(($2 + 1)) "$1" | head -c $(($3 - $2)) | LC_ALL=C grep -E '${TASK_GREP
 
 // sh -c FILES sh <transcript>: "size mtime path" per line for the transcript
 // and each of its subagents' (<session>/subagents/agent-*.jsonl) that exist.
-export const FILES = `for f in "$1" "\${1%.jsonl}"/subagents/agent-*.jsonl; do [ -f "$f" ] && stat -f '%z %m %N' "$f"; done; true`;
+// GNU stat (Linux) first, else BSD stat (macOS).
+export const FILES = `for f in "$1" "\${1%.jsonl}"/subagents/agent-*.jsonl; do [ -f "$f" ] || continue; stat -c '%s %Y %n' "$f" 2>/dev/null || stat -f '%z %m %N' "$f"; done; true`;
 
 // FILES' output: [{ size, mtime (ms), path }].
 export function parseFiles(text) {
