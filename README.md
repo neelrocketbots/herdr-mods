@@ -4,8 +4,8 @@
 
 Mods and a layout for the [Herdr](https://herdr.dev) desktop app, built around
 one git worktree per Linear issue: GitHub, PR, CI and Linear links for the
-focused terminal, a worktrees panel, a PR inbox, markdown previews, and "open in
-your editor" everywhere.
+focused terminal, a worktrees panel, a PR inbox, markdown previews, compact
+spaces and agents lists, and "open in your editor" everywhere.
 
 ![The custom-herdr layout: quick links in the top bar, the PR inbox open on the right](custom-herdr/screenshot.png)
 
@@ -28,7 +28,6 @@ and a screenshot. Take one or all.
 | [`usage-limits`](usage-limits) | Sidebar: Claude (each account) and Codex rate limits as status-line style gauges with reset times |
 | [`spaces-compact`](spaces-compact) | Herdr's Spaces list with smaller rows and text, so more spaces fit |
 | [`agents-compact`](agents-compact) | Herdr's Agents list with smaller rows and text, so more agents fit |
-| [`agent-tasks`](agent-tasks) | Sidebar: the task list of the Claude Code session in the space you're in, and its subagents', live (done, now, next) |
 | [`custom-herdr`](custom-herdr) | Layout: Herdr's main layout with all of the above wired in (bundles its own copies of the mods) |
 
 <p>
@@ -114,7 +113,6 @@ They're trusted code, like any Herdr mod, and run as you:
 | changes-editor | Herdr's own (`git`, file reads) plus your editor | none added | reads `herdr-mods.json` |
 | usage-limits | `security`, `plutil`, `shasum`, `curl`; `find`, `grep`, `stat` | Anthropic's usage endpoint, with each Claude Code login's token | reads Claude Code's Keychain logins (token piped to `curl`, never stored) and `~/.codex/sessions` |
 | spaces-compact, agents-compact | what Herdr's own `spaces` / `agents` run | as Herdr's | as Herdr's |
-| agent-tasks | `hc get`, `sh`, `stat`, `tail`, `head`, `od`, `grep` | none | reads `~/.claude*/sessions` and the session's transcript in `~/.claude*/projects`, never writes |
 
 Nothing is sent anywhere else. `gh` uses its own login; the Linear key, if you
 add one, stays in your Keychain. usage-limits reads Claude Code's own Keychain
