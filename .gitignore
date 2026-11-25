@@ -7,3 +7,4 @@ node_modules/
 
 # Local design notes (specs, plans), not published.
 docs/superpowers/
+.superpowers/
