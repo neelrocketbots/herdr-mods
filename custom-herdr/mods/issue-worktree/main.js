@@ -357,11 +357,27 @@ export default class IssueWorktree extends View {
     // git status and lsof can take a moment: show it on the row meanwhile.
     this.busy = "Checking…"; this.busyPath = c.path;
     cx.notify();
-    cx.spawn(async (cx) => {
-      const [status, running] = await Promise.all([git(["status", "--porcelain"], c.path), runningIn(c.path)]);
-      this.busy = null; this.busyPath = null;
-      this.confirm = { path: c.path, dirty: status.code !== 0 || status.stdout.trim() !== "", running, locked: c.locked };
+    const started = Date.now();
+    this.checking = started;
+    // However the checks end (done, failed, or stuck past 20s), the spinner goes.
+    const finish = (confirm, error) => {
+      if (this.checking !== started) return;
+      this.checking = null; this.busy = null; this.busyPath = null;
+      if (confirm) this.confirm = confirm;
+      if (error) this.error = error;
       cx.notify();
+    };
+    cx.timer.after(20_000, () => finish(null, "Checking this worktree took too long (git status or lsof didn't answer). Try Remove again."));
+    cx.spawn(async () => {
+      try {
+        const [status, running] = await Promise.all([
+          git(["--no-optional-locks", "status", "--porcelain"], c.path, 15_000).catch((e) => ({ code: -1, stdout: "", stderr: String(e?.message ?? e) })),
+          runningIn(c.path),
+        ]);
+        finish({ path: c.path, dirty: status.code !== 0 || status.stdout.trim() !== "", running, locked: c.locked });
+      } catch (e) {
+        finish(null, `Couldn't check this worktree: ${e?.message ?? e}`);
+      }
     });
   }
 
