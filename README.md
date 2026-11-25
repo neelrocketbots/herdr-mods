@@ -105,7 +105,7 @@ They're trusted code, like any Herdr mod, and run as you:
 | Mod | Programs | Network | Files outside its folder |
 | --- | --- | --- | --- |
 | quick-links | `git` (remote, branch, rev-parse), `gh pr view`, `gh search prs`, your editor, `open`; with a Linear key: `security`, `curl` | GitHub, through `gh`; Linear's API | reads `herdr-mods.json` and other mods' `mod.json`; reads the Linear key from the Keychain |
-| issue-worktree | `git` (fetch, worktree add/move/remove, branch -m/-D, status), `gh api graphql`, your editor; with a Linear key: `security`, `curl` | GitHub (`gh`), your git remote (`git fetch`), Linear's API | appends `.worktrees/` to the repo's `.git/info/exclude` when it isn't ignored; reads `herdr-mods.json`; reads the Linear key from the Keychain |
+| issue-worktree | `git` (fetch, worktree add/move/remove, branch -m/-D, status), `lsof` and `ps` (what's running in a worktree), `gh api graphql`, your editor; with a Linear key: `security`, `curl` | GitHub (`gh`), your git remote (`git fetch`), Linear's API | appends `.worktrees/` to the repo's `.git/info/exclude` when it isn't ignored; reads `herdr-mods.json`; reads the Linear key from the Keychain |
 | pr-inbox | `gh api graphql`, `open` | GitHub, through `gh` | none |
 | files-md | Herdr's own (`git`, file reads), your editor, `cp`/`curl`/`sips` for markdown images, `test -f` on a Cmd-clicked terminal path | remote images in markdown files (`curl`) | reads `herdr-mods.json`; caches images in `data/files-md/img` |
 | changes-editor | Herdr's own (`git`, file reads) plus your editor | none added | reads `herdr-mods.json` |

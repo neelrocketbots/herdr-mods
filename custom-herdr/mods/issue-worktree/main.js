@@ -76,9 +76,16 @@ async function runningIn(path) {
   for (const line of r.stdout.split("\n")) {
     if (line[0] === "p") pid = line.slice(1);
     else if (line[0] === "c") cmd = line.slice(1);
-    else if (line[0] === "n" && (line.slice(1) === path || line.slice(1).startsWith(`${path}/`))) out.push(`${cmd} (${pid})`);
+    else if (line[0] === "n" && (line.slice(1) === path || line.slice(1).startsWith(`${path}/`))) out.push([pid, cmd]);
   }
-  return [...new Set(out)];
+  if (!out.length) return [];
+  // lsof gives the process title, which some tools rewrite (Claude Code's is
+  // its version, "2.1.327"); ps gives the program's own name.
+  const pids = [...new Set(out.map(([pid]) => pid))];
+  const ps = await exec("ps", ["-o", "pid=,comm=", "-p", pids.join(",")], { timeout: 5_000 }).catch(() => null);
+  const names = new Map((ps?.stdout ?? "").trim().split("\n").map((l) => l.trim().match(/^(\d+)\s+(.+)$/)).filter(Boolean)
+    .map(([, pid, comm]) => [pid, comm.slice(comm.lastIndexOf("/") + 1)]));
+  return [...new Set(out.map(([pid, cmd]) => `${names.get(pid) || cmd} (${pid})`))];
 }
 
 // PRs per branch, by repo root, kept in module scope on purpose: each dialog
