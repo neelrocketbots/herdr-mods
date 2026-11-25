@@ -44,7 +44,9 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 - Work on a row (checking before Remove, removing, renaming) shows on that
   row: it dims to 70%, ignores clicks, and its editor/rename/remove give way to
   a 12px ring spinner (`spinner.svg`, `.spin(900)`, `working`) with "Checking…",
-  "Removing…" or "Renaming…" in 11px `muted`. Creating shows the same spinner
+  "Removing…" or "Renaming…" in 11px `muted`. "Checking…" always ends: a
+  failed `git status` counts as dirty, and after 20s the spinner goes with an
+  error asking to try again. Creating shows the same spinner
   with its step ("Fetching origin/master…", "Creating …") under the form. Line one: the folder (its path under
   `.worktrees/`, e.g. `HOT-3086` or `FRONT-504/web`, else the folder's name),
   a PR chip (`#482 open`, `#479 draft`, `#465 merged`; 11px, tinted `ansi2`,
