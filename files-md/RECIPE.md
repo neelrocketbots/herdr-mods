@@ -37,7 +37,23 @@ works as in Herdr's panel.
   `writeTextFile(path, next, expected)` (atomic, refused if the file changed);
   otherwise the file is shown again. The preview and the Source editor
   (`set_value`) update in place. Read-only for another machine's files and
-  files cut at 400,000 characters. Source
+  files cut at 400,000 characters.
+  Before that, `markdown-blocks.js` (pure, tested in `test/`) splits the
+  markdown into parts TextView can't draw: fenced code (drawn in a read-only
+  `Editor`, no line numbers or folding, syntax colors from the theme's ANSI
+  colors, `LANG` mapping the fence's language, sized to its lines at 1.5x the
+  terminal font, on `raised` with a `border`, the language in 11px `dim` top
+  right; a cover over the editor takes the pointer so the wheel scrolls the
+  preview, not the code, and Wrap applies to it), GitHub alerts (a 3px left bar
+  and a 12.5px semibold title in the kind's color: Note `ansi4`, Tip `ansi2`,
+  Important `ansi5`, Warning `ansi3`, Caution `ansi1`), `<details>` (a ▸/▾
+  chevron and the summary in medium weight; a click shows the body, indented
+  16px), definition lists (the term in semibold, each definition indented
+  16px) and footnotes (`[^id]` numbered by first reference as ¹ ², the notes
+  under a `border` line at the end in 12px `muted`). Text parts get inline
+  fixes first: `:emoji:` shortcodes (a map of common ones), `<kbd>x</kbd>` as
+  `` `x` ``, `<sub>`/`<sup>` as Unicode when every character has a form, and
+  simple `<table>`s as markdown tables; code spans are left alone. Source
   view and every other file show a read-only editor with syntax colors, in the
   terminal font and size. Markdown source colors headings (`ansi4`), inline and
   fenced code (`ansi2`), lists (`ansi5`), quotes (`dim`) and link URLs

@@ -8,7 +8,8 @@ const TASK = /^(\s*)(?:[-*+]|\d+[.)])\s+\[([ xX])\]\s+(\S.*)$/;
 
 // Markdown -> [{ md: text } | { tasks: [{ line, indent, checked, text }] }].
 // Consecutive task lines share a part; indent is the nesting level (2 spaces).
-export function splitTasks(markdown) {
+// base: the line number of the first line (when this is a piece of a file).
+export function splitTasks(markdown, base = 0) {
   const parts = [];
   let md = [], tasks = null, fence = null;
   const lines = markdown.split("\n");
@@ -20,7 +21,7 @@ export function splitTasks(markdown) {
     if (m) {
       if (md.length) { parts.push({ md: md.join("\n") }); md = []; }
       if (!tasks) { tasks = { tasks: [] }; parts.push(tasks); }
-      tasks.tasks.push({ line, indent: Math.floor(m[1].replace(/\t/g, "  ").length / 2), checked: m[2] !== " ", text: m[3] });
+      tasks.tasks.push({ line: base + line, indent: Math.floor(m[1].replace(/\t/g, "  ").length / 2), checked: m[2] !== " ", text: m[3] });
       return;
     }
     tasks = null;

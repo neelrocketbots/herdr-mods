@@ -10,7 +10,8 @@ import { v_flex, h_flex, Editor, EditorState, TextView, Checkbox } from "gpui-ba
 import { spaces, panes, focused, exec, readTextFile, writeTextFile, watchFolder, theme, settings, window, checking, shared } from "herdr";
 import { openInEditor, editorName } from "./editor.js";
 import { splitImages, loadImage } from "./markdown-images.js";
-import { splitTasks, toggleTask } from "./markdown-tasks.js";
+import { toggleTask } from "./markdown-tasks.js";
+import { splitBlocks, sup } from "./markdown-blocks.js";
 import { OPEN_KEY } from "./link.js";
 
 // The panels share data in one VM, but their host tasks belong to separate copies.
@@ -274,7 +275,9 @@ export default class Files extends View {
 
   // `path` is relative to the folder shown, or absolute for a clicked file outside it.
   show(path, cx, line) {
-    this.code?.release(); this.code = null; this.markdown = null; this.mdParts = null; this.images = new Map(); this.file = path; this.fileError = null;
+    this.code?.release(); this.code = null; this.markdown = null; this.mdParts = null;
+    for (const st of this.blockStates ?? []) st.release();
+    this.blockStates = []; this.openDetails = new Set(); this.images = new Map(); this.file = path; this.fileError = null;
     if (!path || !cx) return;
     const context = this.context, root = this.root, on = this.on;
     const full = path.startsWith("/") ? path : `${root}/${path}`;
@@ -291,7 +294,14 @@ export default class Files extends View {
           // TextView draws no images or task checkboxes: lift task lines out
           // (drawn as checkbox rows), then images (loaded into the app folder).
           this.mdTruncated = text.length > 400000;
-          this.mdParts = splitTasks(this.markdown).flatMap((p) => (p.md !== undefined ? splitImages(p.md) : [p]));
+          this.mdParts = splitBlocks(this.markdown).flatMap((p) => (p.md !== undefined ? splitImages(p.md) : [p]));
+          // Fenced code: a read-only editor each, for syntax colors.
+          for (const part of this.mdParts) if (part.code) {
+            part.state = EditorState.new({ language: LANG[part.code.lang] ?? part.code.lang, value: part.code.text, readonly: true,
+              line_numbers: false, folding: false, soft_wrap: this.wrap,
+              syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
+            this.blockStates.push(part.state);
+          }
           const dir = full.split("/").slice(0, -1).join("/");
           for (const part of this.mdParts) for (const img of part.images ?? []) {
             if (on) { this.images.set(img, null); continue; } // a file on another machine: alt text only
@@ -329,6 +339,56 @@ export default class Files extends View {
         .child(TextView.markdown(`md-task-text-${this.file}-${task.line}`, task.text).selectable(true)))));
   }
 
+  // Fenced code, in a read-only editor sized to its lines (TextView's code
+  // blocks have no syntax colors). The language label sits above, right. A
+  // cover takes the pointer: no selecting here (Source has it), but the wheel
+  // scrolls the preview.
+  mdCode(part, i, t) {
+    const font = settings(), size = font.font_size;
+    const rows = part.code.text.split("\n").length, height = Math.ceil(rows * size * 1.5) + 16;
+    return v_flex().id(`md-code-${i}`).w_full().rounded(7).border_1().border_color(t.border).overflow_hidden().bg(t.raised)
+      .when(Boolean(part.code.lang), (el) => el.child(div().px(12).pt(6).text_size(11).text_color(t.dim).text_right().child(part.code.lang)))
+      .child(div().relative().w_full().h(height).flex_none()
+        .child(Editor.new(part.state).font_family(font.font_family).text_size(size).w_full().h(height))
+        // A layer over the editor, so the wheel scrolls the preview rather than
+        // the editor's own text (which would scroll the code out of its box).
+        .child(div().id(`md-code-cover-${i}`).absolute().top(0).left(0).right(0).bottom(0)));
+  }
+
+  // GitHub alerts: a colored bar and title, then the text.
+  mdAlert(alert, i, t) {
+    const look = { note: ["ⓘ", "Note", t.ansi4], tip: ["✦", "Tip", t.ansi2], important: ["❖", "Important", t.ansi5], warning: ["▲", "Warning", t.ansi3], caution: ["⬣", "Caution", t.ansi1] }[alert.kind];
+    return v_flex().id(`md-alert-${i}`).pl(12).py(4).gap(4).border_l(3).border_color(look[2])
+      .child(div().text_size(12.5).font_semibold().text_color(look[2]).child(`${look[0]}  ${look[1]}`))
+      .when(Boolean(alert.md.trim()), (el) => el.child(TextView.markdown(`md-alert-text-${this.file}-${i}`, alert.md).selectable(true)));
+  }
+
+  // <details>: the summary with a chevron; a click shows the rest.
+  mdDetails(d, i, t) {
+    const open = this.openDetails.has(i);
+    return v_flex().id(`md-details-${i}`).gap(4)
+      .child(h_flex().id(`md-details-head-${i}`).gap(6).items_center().cursor_pointer().hover((st) => st.text_color(t.foreground))
+        .on_click((_e, cx) => { if (open) this.openDetails.delete(i); else this.openDetails.add(i); cx.notify(); })
+        .child(div().w(10).text_size(11).text_color(t.dim).child(open ? "▾" : "▸"))
+        .child(div().font_medium().child(d.summary)))
+      .when(open && Boolean(d.md), (el) => el.child(div().pl(16).child(TextView.markdown(`md-details-text-${this.file}-${i}`, d.md).selectable(true))));
+  }
+
+  // Definition lists: the term in semibold, its definitions indented.
+  mdDeflist(entries, i, t) {
+    return v_flex().id(`md-deflist-${i}`).gap(8).children(entries.map((e, j) => v_flex().gap(2)
+      .child(div().font_semibold().child(e.term.replace(/[*_`]/g, "")))
+      .children(e.defs.map((d, k) => div().pl(16).child(TextView.markdown(`md-def-${this.file}-${i}-${j}-${k}`, d).selectable(true))))));
+  }
+
+  // Footnotes, gathered at the end under a line: ¹ text.
+  mdFootnotes(notes, i, t) {
+    return v_flex().id(`md-notes-${i}`).mt(8).pt(10).gap(4).border_t(1).border_color(t.border).text_size(12).text_color(t.muted)
+      .children(notes.map((n) => h_flex().gap(6).items_start()
+        .child(div().flex_none().w(14).text_color(t.dim).child(sup(n.n)))
+        .child(div().flex_1().min_w(0).child(TextView.markdown(`md-note-${this.file}-${n.n}`, n.md).selectable(true)))));
+  }
+
   toggleMdTask(task, cx) {
     const path = this.file, full = this.fullPath();
     cx.spawn(async (cx) => {
@@ -349,6 +409,7 @@ export default class Files extends View {
     this.wrap = wrap;
     try { localStorage.setItem(WRAP_KEY, wrap ? "1" : "0"); } catch {}
     this.code?.set_soft_wrap(wrap);
+    for (const st of this.blockStates ?? []) st.set_soft_wrap(wrap);
     cx.notify();
   }
 
@@ -422,6 +483,11 @@ export default class Files extends View {
             .children((this.mdParts ?? [{ md: this.markdown }]).map((part, i) => part.md !== undefined
               ? TextView.markdown(`md-${this.file}-${i}`, part.md).selectable(true)
               : part.tasks ? this.mdTasks(part.tasks, i, t)
+              : part.code ? this.mdCode(part, i, t)
+              : part.alert ? this.mdAlert(part.alert, i, t)
+              : part.details ? this.mdDetails(part.details, i, t)
+              : part.deflist ? this.mdDeflist(part.deflist, i, t)
+              : part.footnotes ? this.mdFootnotes(part.footnotes, i, t)
               : h_flex().flex_wrap().gap(8).items_start().children(part.images.map((img, j) => this.mdImage(img, `${i}-${j}`, t)))))
         : this.code
         ? Editor.new(this.code).font_family(font.font_family).text_size(font.font_size).flex_1().min_h(0)
