@@ -81,8 +81,15 @@ Code session working in the shown space: done, now, next. Read-only, live.
   and unparseable lines are skipped.
 - Block: the layout block (`props.block`) starts at `"size": { "px": 0 }`,
   never hidden (a hidden block never starts its mod). `layout.resize` sizes it
-  to the content's height, and to 0 when there's nothing to show. Without
-  `props.block` it leaves the layout alone.
+  to the content's height on every size change. With nothing to show, the
+  header stays: "· no task list yet" (a Claude, no list), "· no Claude here",
+  "· on another machine". Without `props.block` it leaves the layout alone.
+- Motion (native, no timers): the list sits in a box whose height
+  `.transition("height", 220ms ease-out)`s to the list's measured height
+  (capped at 168px, then it scrolls), so the block follows it smoothly;
+  `layout.resize` itself can't animate. On a space switch the box's opacity
+  goes to 0 (`.transition("opacity", 160ms)`) until the new space is read,
+  then back to 1 (0.6 for an ended session).
 
 ## Watch out
 

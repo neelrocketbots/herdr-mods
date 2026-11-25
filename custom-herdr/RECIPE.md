@@ -12,8 +12,8 @@ stay on the left as in Herdr's default window.
 
 - Left, a sidebar 268px wide (44 to 480): Herdr's brand row (46px), Spaces and
   Agents sharing the height equally (90px minimum each), the agent-tasks
-  block (0px until the space's agent has a task list, then sized to its
-  rows), the usage-limits block (sized to its rows), and its footer (69px).
+  block (one line until the space's agent has a task list, then sized to
+  its rows), the usage-limits block (sized to its rows), and its footer (69px).
 - Right, from top to bottom:
   - A 42px top bar: Herdr's tab strip taking the width, then the quick-links
     block on the right. That block starts at 0px and quick-links sizes it to

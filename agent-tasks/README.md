@@ -25,7 +25,10 @@ reads the list Claude Code already keeps, so there's nothing to set up.
   count, and what it's doing while it works), up to four, newest first.
   Today's Claude Code doesn't give subagents the task tools, so these show
   only once it does.
-- **Nothing to show** (no session, or no task list): the block shrinks to 0.
+- **Nothing to show**: the block keeps one line, "Tasks · no task list yet" (or
+  "no Claude here"), so it doesn't pop in and out.
+- **Smooth**: the list's height animates as rows come and go, and it fades
+  out and back in when you switch space.
 - **Live, by events**: it watches the session's transcript folder, so a change
   shows as Claude writes it (at most about two reads a second), and it
   switches with the space at once. It also checks every 30 seconds, and does
@@ -55,7 +58,7 @@ sidebar column, above Usage (`custom-herdr` has it):
   "content": { "mod": "agent-tasks", "props": { "block": "tasks" } } }
 ```
 
-It sizes the block to its rows, and back to 0 when there's nothing to show.
+It sizes the block to its content (one line when there's nothing to show).
 Don't add it hidden: Herdr starts a block's mod only once it shows.
 
 ## What it runs

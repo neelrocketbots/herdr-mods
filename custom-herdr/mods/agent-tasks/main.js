@@ -17,8 +17,10 @@
 // when the space or its Claude agents change, and checks every 30s anyway;
 // nothing while the window is hidden. Never writes under ~/.claude*.
 //
-// The layout block (props.block) starts at 0px; this sizes it to its content,
-// and back to 0 when there's nothing to show. The header folds it (remembered).
+// The layout block (props.block) starts at 0px; this sizes it to its content.
+// With nothing to show it keeps its header line ("Tasks · no task list yet").
+// The list's height animates, and it fades across a space switch. The header
+// folds it (remembered).
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { exec, hc, readTextFile, watchFolder, theme, run, props, checking, spaces, agents, window } from "herdr";
@@ -53,6 +55,10 @@ export default class AgentTasks extends View {
     this.showDone = false;
     this.px = null;
     this.key = null;         // active space + its Claude agents, as of the last render
+    this.spaceId = null;
+    this.reason = "";       // why there's no list: shown in the header
+    this.listH = 0;          // the list's height, animated toward its content's
+    this.fade = false;       // the list fades out while a new space is read
     this.dirs = null; this.dirsAt = 0;
     try { this.collapsed = localStorage.getItem(COLLAPSED_KEY) === "1"; } catch { this.collapsed = false; }
     try { this.last = JSON.parse(localStorage.getItem(LAST_KEY) ?? "{}") ?? {}; } catch { this.last = {}; }
@@ -74,10 +80,10 @@ export default class AgentTasks extends View {
         for (const dir of dirs) if (!watches.has(dir)) watches.set(dir, watchFolder(dir));
         if (activeSpace()?.id !== r.spaceId) this.dirty = true; // switched meanwhile: read again
         else {
-          const sig = r.view ? JSON.stringify([r.view.label, r.view.endedAt && agoText(r.view.endedAt), r.view.tasks, r.view.subs]) : "";
-          if (sig !== this.sig) {
-            this.sig = sig; this.view = r.view;
-            if (!r.view) this.size(0);
+          const sig = r.view ? JSON.stringify([r.view.label, r.view.endedAt && agoText(r.view.endedAt), r.view.tasks, r.view.subs]) : `none:${r.reason}`;
+          if (sig !== this.sig || this.fade) {
+            this.sig = sig; this.view = r.view; this.reason = r.reason ?? "";
+            this.fade = false; // fade the new space's list in
             cx.notify();
           }
         }
@@ -95,13 +101,13 @@ export default class AgentTasks extends View {
 
   async load() {
     const space = activeSpace();
-    if (!space || space.machine) return { spaceId: space?.id ?? null, view: null, watch: [] };
+    if (!space || space.machine) return { spaceId: space?.id ?? null, view: null, watch: [], reason: space ? "on another machine" : "" };
     if (!this.dirs || Date.now() - this.dirsAt > DIRS_MS) {
       const r = await exec("sh", ["-c", CLAUDE_DIRS], { timeout: 5000 });
       this.dirs = r.stdout.split("\n").filter(Boolean); this.dirsAt = Date.now();
     }
-    const live = new Set(), watch = new Set();
-    for (const agent of pickAgents(agents(), space.id)) {
+    const live = new Set(), watch = new Set(), claudes = pickAgents(agents(), space.id);
+    for (const agent of claudes) {
       const session = await this.session(agent.address);
       if (!session) continue;
       live.add(session.path); watch.add(folderOf(session.path));
@@ -112,10 +118,11 @@ export default class AgentTasks extends View {
       return { spaceId: space.id, view: { label, endedAt: null, ...lists }, watch: [...watch] };
     }
     const last = this.last[space.id];
-    if (!last || live.has(last.path)) return { spaceId: space.id, view: null, watch: [...watch] };
+    const reason = claudes.length ? "no task list yet" : "no Claude here";
+    if (!last || live.has(last.path)) return { spaceId: space.id, view: null, watch: [...watch], reason };
     watch.add(folderOf(last.path));
     const lists = await this.lists(last.path, ENDED_MS);
-    return { spaceId: space.id, view: lists ? { label: last.label, endedAt: lists.mtime, ...lists } : null, watch: [...watch] };
+    return { spaceId: space.id, view: lists ? { label: last.label, endedAt: lists.mtime, ...lists } : null, watch: [...watch], reason };
   }
 
   // The Claude session in terminal `address`: { path, name } or null.
@@ -211,11 +218,11 @@ export default class AgentTasks extends View {
       const sid = activeSpace()?.id ?? null;
       const key = `${sid}|${pickAgents(agents(), sid).map((a) => a.address).join(",")}`;
       if (key !== this.key) { this.key = key; this.dirty = true; this.wake?.(); }
+      if (sid !== this.spaceId) { if (this.spaceId !== null) this.fade = true; this.spaceId = sid; }
     }
     const t = theme(), v = this.view;
     const root = v_flex().id("agent-tasks").w_full().bg(t.chrome).text_color(t.foreground);
-    if (!v) return root;
-    const s = summary(v.tasks), faded = v.endedAt != null;
+    const s = summary(v?.tasks ?? []), faded = v?.endedAt != null;
     const working = t.working ?? t.ansi3;
     const mark = (child) => div().flex_none().size(13).mt(2).flex().items_center().justify_center().child(child);
     const ring = () => div().size(11).rounded_full().border_1().border_color(t.dim);
@@ -245,12 +252,12 @@ export default class AgentTasks extends View {
       .tooltip(this.collapsed ? "Show the tasks" : "Just the count")
       .on_click((_e, cx) => this.toggle(cx))
       .child(div().flex_none().child("Tasks"))
-      .child(div().flex_1().min_w(0).truncate().child(faded ? `· ${v.label} · ended ${agoText(v.endedAt)} ago` : `· ${v.label}`))
+      .child(div().flex_1().min_w(0).truncate().child(!v ? (this.reason ? `· ${this.reason}` : "") : faded ? `· ${v.label} · ended ${agoText(v.endedAt)} ago` : `· ${v.label}`))
       .when(s.total > 0, (el) => el
         .child(div().flex_none().w(44).h(3).rounded(2).bg(t.input).overflow_hidden()
           .child(div().h_full().w(Math.round((44 * pct) / 100)).bg(t.ansi2)))
         .child(div().flex_none().child(`${s.done}/${s.total}`)))
-      .child(div().flex_none().child(this.collapsed ? "▸" : "▾"));
+      .when(Boolean(v), (el) => el.child(div().flex_none().child(this.collapsed ? "▸" : "▾")));
 
     // A subagent: one line, its description and count; while it works, its
     // task in progress under it. Tooltip: its whole list.
@@ -275,13 +282,24 @@ export default class AgentTasks extends View {
       ...(this.showDone ? s.completed.map(doneTask) : []),
       ...s.current.map(nowTask),
       ...s.pending.map(nextTask),
-      ...(v.subs ?? []).map(subRow),
+      ...(v?.subs ?? []).map(subRow),
     ];
+    // The list's box animates to its content's height (measured below) and
+    // the block follows it (fit, on every size change), so rows slide in and
+    // out instead of jumping. On a space switch it fades out, and back in
+    // once the new space is read.
+    const open = !this.collapsed && rows.length > 0;
     return root.child(v_flex().id("at-content").w_full().px(10).pt(6).pb(6).gap(1).border_t(1).border_color(t.border)
       .on_size_change((size) => this.fit(size.height))
       .child(header)
-      .when(!this.collapsed, (el) => el.child(v_flex().id("at-list").max_h(LIST_MAX).overflow_y_scroll().gap(1)
-        .when(faded, (l) => l.opacity(0.6))
-        .children(rows))));
+      .child(div().id("at-clip").w_full().overflow_y_scroll()
+        .h(open ? this.listH : 0).transition("height", { duration: 220, easing: "ease-out" })
+        .opacity(this.fade ? 0 : faded ? 0.6 : 1).transition("opacity", { duration: 160, easing: "ease-out" })
+        .child(v_flex().id("at-list").w_full().gap(1)
+          .on_size_change((size, cx) => {
+            const h = Math.min(LIST_MAX, Math.ceil(size.height));
+            if (h !== this.listH) { this.listH = h; cx.notify(); }
+          })
+          .children(rows))));
   }
 }
