@@ -50,6 +50,20 @@
           ]
         },
         {
+          "id": "tasks",
+          "type": "block",
+          "content": {
+            "mod": "agent-tasks",
+            "props": {
+              "block": "tasks"
+            }
+          },
+          "size": {
+            "px": 120
+          },
+          "hidden": true
+        },
+        {
           "id": "usage",
           "type": "block",
           "content": {
