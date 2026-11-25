@@ -19,7 +19,7 @@ stay on the left as in Herdr's default window.
     its buttons.
   - The work area: the active tab's panes with 10px corners, 8px gaps, a 1px
     `border` (`accent` on the focused pane) and a 30px pane header always
-    shown. To their right, the side panel: 368px (280 to 900), hidden until a
+    shown. Panes other than the selected one fade by 0.4 (`veil`). To their right, the side panel: 368px (280 to 900), hidden until a
     panel button opens it.
   - A 28px status bar.
 - The side panel shows one of four views: `files` (files-md), `changes`
@@ -51,12 +51,14 @@ stay on the left as in Herdr's default window.
     `quick-links` block (`quick-links`, `{ block: "quick-links" }`, starting at
     px 0).
   - `work-body` row: `main` block (`{ tab: "active" }`, pane header mod `pane`,
-    radius 10, gap 8), then the `panel` column (px 368, min 280, max 900,
-    hidden) containing the `panel-body` stack (active `files`) with blocks
-    `files` (files-md), `changes` (changes-editor) and `prs` (pr-inbox).
+    radius 10, gap 8, `veil: 0.4`), then the `panel` column (px 368, min 280,
+    max 900, hidden) containing the `panel-body` stack (active `files`) with
+    blocks `files` (files-md), `changes` (changes-editor), `prs` (pr-inbox)
+    and `worktrees` (issue-worktree).
   - `status` block (`workspace-status`, 28px).
 - Root: `titlebar: "none"`, `traffic_lights: [12, 16]`,
-  `preview: "layouts/custom-herdr.svg"`.
+  `preview: "layouts/custom-herdr.svg"`, `link_handlers: ["files-md"]`
+  (Ctrl/Cmd-clicked file paths in terminals open in the Files panel).
 - Mods: `quick-links`, `issue-worktree`, `pr-inbox`, `files-md`,
   `changes-editor` (in `mods/`), plus Herdr's shipped `workspace-chrome`,
   `spaces`, `agents`, `tabs`, `pane` and `workspace-status`.
