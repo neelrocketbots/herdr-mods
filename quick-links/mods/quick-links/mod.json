@@ -1,1 +1,13 @@
-{ "place": "none", "title": "Quick links" }
+{
+  "place": "none",
+  "title": "Quick links",
+  "palette": [
+    { "title": "Custom: New worktree", "command": "quick-links.new-worktree", "words": "worktree branch issue linear create" },
+    { "title": "Custom: Toggle Worktrees panel", "command": "quick-links.worktrees", "words": "worktree panel list remove" },
+    { "title": "Custom: Toggle PRs panel", "command": "quick-links.prs", "words": "pull requests review inbox" },
+    { "title": "Custom: Open repo on GitHub", "command": "quick-links.repo", "words": "github repository browser" },
+    { "title": "Custom: Open this branch's PR", "command": "quick-links.pr", "words": "pull request github browser" },
+    { "title": "Custom: Open this branch's Linear issue", "command": "quick-links.linear", "words": "linear issue ticket browser" },
+    { "title": "Custom: Open folder in editor", "command": "quick-links.editor", "words": "zed editor code cursor" }
+  ]
+}

@@ -14,7 +14,7 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar } from "gpui-base";
-import { exec, run, theme, spaces, shared, setShared, checking, layout, props } from "herdr";
+import { exec, run, theme, spaces, shared, setShared, checking, layout, props, window } from "herdr";
 
 const QUERY = `query {
   review: search(query: "is:pr is:open archived:false review-requested:@me", type: ISSUE, first: 50) { nodes { ...pr } }
@@ -71,6 +71,9 @@ export default class PrInbox extends View {
   }
 
   maybeRefresh(cx) {
+    // Window minimized, hidden or covered: ask GitHub again once it's back (render).
+    if (window()?.visible === false) { this.paused = true; return; }
+    this.paused = false;
     const age = Date.now() - this.at;
     if (age > (this.visible() ? SHOWN_MS : HIDDEN_MS)) this.refresh(cx);
   }
@@ -158,6 +161,7 @@ export default class PrInbox extends View {
   }
 
   render(cx) {
+    if (this.paused && window()?.visible) this.maybeRefresh(cx);
     // Just opened: refresh if what's shown is over a minute old.
     const shown = this.visible();
     if (shown && !this.shown && !checking() && Date.now() - this.at > OPENED_MS) this.refresh(cx);

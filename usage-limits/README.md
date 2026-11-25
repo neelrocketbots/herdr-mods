@@ -20,7 +20,8 @@ It works on its own, with nothing from your status line.
 - **Collapse**: the chevron by "Usage" folds it to just the bars, one line per
   account. It remembers which.
 - Both are checked every 5 minutes (Codex's numbers change only while Codex
-  works). The last numbers are kept on disk, so rows show at once after a restart.
+  works), and not while the Herdr window is minimized, hidden or covered: they
+  catch up when it's back. The last numbers are kept on disk, so rows show at once after a restart.
 
 ## Install
 

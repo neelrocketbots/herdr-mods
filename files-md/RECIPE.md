@@ -1,8 +1,9 @@
 # Files with markdown
 
-Herdr's Files panel with two additions. Markdown files open rendered, with a
-Source toggle, instead of as raw text. Every file you open gets an "Open in
-<editor>" button for your own editor. Everything else (the lazy tree of the
+Herdr's Files panel with a few additions. Markdown files open rendered, with a
+Source toggle, instead of as raw text. Ctrl/Cmd-clicking a file path in a
+terminal opens it here, at its line. Long lines wrap (a Wrap toggle). Every
+file you open gets an "Open in <editor>" button for your own editor. Everything else (the lazy tree of the
 focused terminal's folder, git marks, read-only previews with syntax colors)
 works as in Herdr's panel.
 
@@ -14,9 +15,10 @@ works as in Herdr's panel.
   corners, 13px text.
 - Header, 42px: "←" (when a file is open), "Files" in semibold, then the folder
   name or the open file's path, right-aligned in 12px `dim`. For a markdown
-  file a "Source" / "Preview" button follows, then "Open in Zed" (the editor's
-  name). Both buttons are 12px `muted` on `chrome` with 6px corners, and turn
-  `hover` with `foreground` text on hover.
+  file a "Source" / "Preview" button follows, then "Wrap" (in the editor view;
+  on `selected` while wrapping), then "Open in Zed" (the editor's name). The
+  buttons are 12px `muted` on `chrome` with 6px corners, and turn `hover` with
+  `foreground` text on hover.
 - The tree: 28px rows indented 18px per level, 12px chevrons, 14px folder and
   file icons, the name, and a git mark on the right: `A` in `ansi2`, `D` or `U`
   in `ansi1`, others in `blocked`.
@@ -25,13 +27,30 @@ works as in Herdr's panel.
   Images sit between the text sections at their own size (or their
   `width="..."`), no wider than the preview, side by side when a line holds
   several; a click opens the image's link, else the image. Source
-  view and every other file show a read-only editor with syntax colors.
+  view and every other file show a read-only editor with syntax colors, in the
+  terminal font and size. Markdown source colors headings (`ansi4`), inline and
+  fenced code (`ansi2`), lists (`ansi5`), quotes (`dim`) and link URLs
+  (`ansi6`).
 
 ## How it behaves
 
 - The tree follows the focused terminal's folder (its pane's folder, else the
-  space's). It reads folders lazily, 500 entries per folder and 5,000 in all,
-  and refreshes every 10s.
+  space's). It reads folders lazily, 500 entries per folder and 5,000 in all.
+  Refreshing is Herdr 0.1.18's: a folder watch plus a 10s poll, one `git
+  status` shared with Changes (`globalThis[Symbol.for("herdr.repoStatus.v2")]`),
+  longer waits after slow scans, and none while the window isn't focused.
+- Terminal clicks: `link.js` exports `handleLink({ link })`, and `mod.json` has
+  `"link_handlers": [{ "kind": "file", "pattern": "." }]`. It passes (Herdr's
+  usual opener) for remote or unresolved paths (`link.path` null), images,
+  archives and other binaries, folders, and layouts without a `files-md`
+  block. Otherwise it writes `shared("files-md.open") = { path, line, at }` and
+  uncovers the block: `layout.select` in every stack above it and
+  `layout.show` on hidden ancestors. The panel picks the request up in
+  `render` (ignored after 30s), shows the path relative to the folder when
+  inside it (else absolute), selects `link.line` (which scrolls it into view),
+  and opens a markdown file with a line in Source view.
+- Wrap: `soft_wrap` on the editor state, `set_soft_wrap()` on toggle; the
+  choice is kept in `localStorage` (`files-md.wrap`).
 - Clicking a file reads it with `readTextFile` (on the space's machine). Binary
   files say so. Text over 400,000 characters is truncated with a note.
 - Files ending in `.md`, `.markdown`, `.mdx`, `.mdown` or `.mkd` open rendered.
@@ -65,7 +84,8 @@ works as in Herdr's panel.
   (`markdown-images.js`: `splitImages`, `loadImage`), a `source` flag, and
   `editor.js` for the button.
 - herdr: `spaces`, `panes`, `focused`, `exec`, `readTextFile`, `watchFolder`,
-  `theme`, `settings`, `window`, `notify`, `checking`, `shared`.
+  `theme`, `settings`, `window`, `checking`, `shared`; in `link.js` `exec`,
+  `run`, `setShared`, `layout`.
 - Programs: `sh` to list folders, `git` for marks (as shipped), `cp`, `curl`
   and `sips` for images, the editor's CLI or `open -a`, and `open` for image
   clicks.
@@ -80,7 +100,8 @@ works as in Herdr's panel.
 - Herdr rewrites its shipped mods on every start, so changes must live in a
   copy. Clone with `mod.clone`, which rewrites the copy's own `mods/<name>/`
   asset paths, then point the layout's block at the copy. A copy won't get
-  Herdr's later fixes to `files`.
+  Herdr's later fixes to `files`: re-copy it after a Herdr update and apply
+  these additions again (last done on 0.1.18).
 - `markdown` starts as `undefined`, not `null`; test with `!= null` or the
   button shows before any file is open.
 - `editor.js` is a copy shared with quick-links, issue-worktree and
@@ -95,3 +116,5 @@ works as in Herdr's panel.
 - Changing `editor` in `herdr-mods.json` relabels the button within seconds
   (with quick-links running).
 - Code files still open in the read-only editor exactly as in Herdr's panel.
+- Cmd-clicking `src/app.ts:42` in a terminal opens the Files panel on that file
+  with line 42 selected; Cmd-clicking a `.png` still opens it as before.

@@ -1,13 +1,60 @@
 // A lazy file browser for the focused pane's folder, with bounded read-only previews.
 // files-md: clone of the shipped `files` mod that also renders markdown
-// (Preview / Source toggle in the header) and opens the shown file in your
-// editor (herdr-mods.json). Shipped mods are rewritten on every
-// start, so changes live here; the custom-herdr layout's Files block points at it.
+// (Preview / Source toggle in the header), wraps long lines (Wrap toggle),
+// opens the shown file in your editor (herdr-mods.json), and opens files
+// Ctrl/Cmd-clicked in a terminal (link.js hands them over). Shipped mods are
+// rewritten on every start, so changes live here; the custom-herdr layout's
+// Files block points at it.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, notify, checking, shared } from "herdr";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, checking, shared } from "herdr";
 import { openInEditor, editorName } from "./editor.js";
 import { splitImages, loadImage } from "./markdown-images.js";
+import { OPEN_KEY } from "./link.js";
+
+// The panels share data in one VM, but their host tasks belong to separate copies.
+const scans = globalThis[Symbol.for("herdr.repoStatus.v2")] ??= new Map();
+
+async function repoStatus(root, on, { after, visiting, urgent, allowInactive }, cx, current) {
+  const repo = JSON.stringify([on, root]), now = Date.now();
+  for (const [key, scan] of scans) {
+    if (scan.pollAt <= now || (!scan.pollAt && scan.task.is_done())) scans.delete(key);
+  }
+  while (current()) {
+    let scan = scans.get(repo);
+    const pending = scan && !scan.pollAt && !scan.task.is_done();
+    const reusable = scan?.status?.code === 0 && Date.now() < scan.pollAt
+      && (scan.started >= after || (!urgent && Date.now() < scan.watchAt));
+    if (!reusable && (!pending || (visiting && scan.started !== undefined && scan.started < after))) {
+      if (!allowInactive && window()?.active === false) return null;
+      const next = {};
+      next.task = cx.spawn(async cx => {
+        await cx.sleep(25); // Let both listeners for a watch batch join before starting Git.
+        if (!allowInactive && window()?.active === false) return;
+        next.started = Date.now();
+        try {
+          next.status = await exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"], { cwd: root, on });
+        } catch (error) {
+          next.error = error;
+        } finally {
+          const finished = Date.now(), duration = finished - next.started;
+          const delay = duration < 500 ? 0 : Math.min(60000, 5 * duration);
+          next.watchAt = finished + delay;
+          next.pollAt = finished + Math.max(10000, delay);
+          if (next.status?.code !== 0 && scans.get(repo) === next) scans.delete(repo);
+        }
+      });
+      scans.set(repo, next);
+      scan = next;
+    }
+    // Resume through our own host task, so another copy's close cannot cancel our follow-up work.
+    while (current() && !scan.pollAt && !scan.task.is_done()) await cx.sleep(50);
+    if (!current()) return null;
+    if (!scan.pollAt) continue; // The scanning copy closed or reloaded.
+    return scan;
+  }
+  return null;
+}
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -17,7 +64,21 @@ function location() {
 }
 const key = () => JSON.stringify(location());
 const MARKDOWN = new Set(["md", "markdown", "mdx", "mdown", "mkd"]);
-const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
+const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html",
+  md: "markdown", markdown: "markdown", mdx: "markdown", mdown: "markdown", mkd: "markdown" };
+const WRAP_KEY = "files-md.wrap";
+const readWrap = () => { try { return localStorage.getItem(WRAP_KEY) !== "0"; } catch { return true; } };
+// UTF-16 offsets of a 1-based line, for selecting it in the editor.
+function lineRange(text, line) {
+  let start = 0;
+  for (let n = 1; n < line; n++) {
+    const next = text.indexOf("\n", start);
+    if (next < 0) return null;
+    start = next + 1;
+  }
+  const end = text.indexOf("\n", start);
+  return { start, end: end < 0 ? text.length : end };
+}
 const PER_FOLDER = 500, TOTAL = 5000;
 
 async function directory(path, on) {
@@ -50,7 +111,8 @@ export default class Files extends View {
     this.saved = new Map();
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
     this.refresh(cx);
-    cx.timer.every(10000, cx => this.refresh(cx));
+    cx.timer.every(500, cx => this.refreshIfDue(cx));
+    this.wrap = readWrap();
     this.editor = "editor";
     if (checking()) return;
     // Its name comes from quick-links via shared("herdr-mods.editor"); read the
@@ -58,13 +120,46 @@ export default class Files extends View {
     cx.spawn(async cx => { this.editor = await editorName(); cx.notify(); });
   }
 
-  watch(root, cx) {
-    if (this.on || this.watched === root) return;
-    this.watched = root;
-    const context = this.context;
+  // A file Ctrl/Cmd-clicked in a terminal (link.js): show it, at its line.
+  takeOpen(cx) {
+    const req = shared(OPEN_KEY);
+    if (!req || req.at === this.openSeen) return;
+    this.openSeen = req.at;
+    if (Date.now() - req.at > 30_000) return; // left over from an earlier click
+    const under = this.root && req.path.startsWith(`${this.root}/`);
+    if (req.line && MARKDOWN.has(req.path.split(".").pop().toLowerCase())) this.source = true;
+    this.show(under ? req.path.slice(this.root.length + 1) : req.path, cx, req.line);
+  }
+
+  refreshIfDue(cx) {
+    const active = window()?.active !== false, context = this.context;
+    const refocused = active && this.windowActive === false;
+    this.windowActive = active;
+    if (!context) return;
+    if (refocused && (context.dirtyAt || !context.watch)) context.catchUp = true;
+    if (!active || this.loading) return;
+    const now = Date.now();
+    if (context.catchUp || (context.dirtyAt && now >= context.watchAt) || now >= context.pollAt) this.refresh(cx);
+  }
+
+  watch(root, context, cx) {
+    if (context.on || context.watch?.root === root) return;
+    context.watch?.pending?.cancel();
+    const watch = { root };
+    context.watch = watch;
     cx.spawn(async cx => {
-      try { while (this.context === context) { await watchFolder(root); if (this.current(context)) this.refresh(cx); } }
-      catch { if (this.context === context) this.watched = null; }
+      try {
+        while (this.context === context && context.watch === watch) {
+          watch.pending = watchFolder(root);
+          const paths = await watch.pending;
+          if (paths.length && context.watch === watch && this.current(context)) {
+            context.dirtyAt = Date.now() + 1;
+            this.refreshIfDue(cx);
+          }
+        }
+      } catch {
+        if (context.watch === watch) context.watch = null;
+      }
     });
   }
 
@@ -83,38 +178,75 @@ export default class Files extends View {
 
   refresh(cx) {
     const { cwd, on } = location(), next = key();
-    if (next !== this.context?.key) {
-      if (this.context) this.saved.set(this.context.key, { folders: this.folders, file: this.file });
+    const visiting = next !== this.context?.key;
+    if (visiting) {
+      if (this.context) {
+        this.saved.set(this.context.key, { folders: this.folders, file: this.file });
+        this.context.watch?.pending?.cancel();
+      }
       const saved = this.saved.get(next);
-      this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
-      this.pending = new Set(); this.marks = {}; this.show(null); this.watched = null; this.error = null; this.limited = false;
+      this.context = { key: next, cwd, on, dirtyAt: 0 }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
+      this.pending = new Set(); this.marks = {}; this.show(null); this.error = null; this.limited = false;
       this.loading = false;
       if (saved?.file) this.show(saved.file, cx);
     }
-    if (!cwd || this.loading) return;
     const context = this.context;
+    const now = Date.now();
+    if (!cwd) {
+      context.catchUp = false;
+      context.dirtyAt = 0;
+      context.pollAt = now + 10000;
+      return;
+    }
+    if (this.loading) return;
+    if (context.catchUp && !context.dirtyAt) context.dirtyAt = now + 1;
+    const request = {
+      after: visiting ? now + 1 : context.dirtyAt || (context.lastStatus ?? -1) + 1,
+      visiting,
+      urgent: visiting || context.catchUp,
+      allowInactive: visiting,
+    };
+    context.catchUp = false;
+    context.pollAt = context.watchAt = now + 10000;
     this.loading = true;
     this.limited = false;
     cx.spawn(async cx => {
       try {
+        this.watch(cwd, context, cx);
+        const dirtyAtListing = context.dirtyAt;
         for (const path of ["", ...this.folders]) {
           if (!this.current(context)) return;
           await this.loadFolder(path, context);
         }
         const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }).catch(() => null);
+        if (!this.current(context)) return;
         const marks = {};
+        let covered = dirtyAtListing;
         if (top?.code === 0) {
-          // Writes nothing under .git (index lock, fsmonitor cookie): the folder watch would refresh again.
-          const status = await exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"], { cwd, on }).catch(() => null);
+          const root = top.stdout.trim();
+          const scan = await repoStatus(root, on, request, cx, () => this.context === context);
+          if (!scan || !this.current(context)) return;
+          const { status, started, pollAt, watchAt } = scan;
+          context.lastStatus = started;
+          context.pollAt = pollAt;
+          context.watchAt = watchAt;
+          covered = Math.min(dirtyAtListing, started);
+          if (request.urgent && request.after > started) context.catchUp = true;
           if (status?.code === 0) for (const entry of status.stdout.split("\0").filter(Boolean).slice(0, TOTAL)) {
             const xy = entry.slice(0, 2);
-            marks[`${top.stdout.trim()}/${entry.slice(3)}`] = xy === "??" || xy.includes("A") ? "A" : xy.includes("U") ? "U" : xy.includes("D") ? "D" : "M";
+            marks[`${root}/${entry.slice(3)}`] = xy === "??" || xy.includes("A") ? "A" : xy.includes("U") ? "U" : xy.includes("D") ? "D" : "M";
           }
+        } else {
+          context.watchAt = Date.now();
         }
         if (!this.current(context)) return;
-        this.marks = marks; this.error = null; this.watch(cwd, cx);
+        if (context.dirtyAt <= covered) context.dirtyAt = 0;
+        this.marks = marks; this.error = null;
       } catch (e) { if (this.current(context)) this.error = String(e); }
-      finally { if (this.context === context) this.loading = false; cx.notify(); }
+      finally {
+        if (this.context === context) this.loading = false;
+        cx.notify();
+      }
     });
   }
 
@@ -139,22 +271,25 @@ export default class Files extends View {
     cx.notify();
   }
 
-  show(path, cx) {
+  // `path` is relative to the folder shown, or absolute for a clicked file outside it.
+  show(path, cx, line) {
     this.code?.release(); this.code = null; this.markdown = null; this.mdParts = null; this.images = new Map(); this.file = path; this.fileError = null;
     if (!path || !cx) return;
     const context = this.context, root = this.root, on = this.on;
+    const full = path.startsWith("/") ? path : `${root}/${path}`;
     cx.spawn(async cx => {
       try {
-        const text = await readTextFile(`${root}/${path}`, { on });
+        const text = await readTextFile(full, { on });
         if (this.file !== path || !this.current(context)) return;
         if (text === null) { this.fileError = "This file is no longer available"; return; }
         if (text.includes("\0")) { this.fileError = "Binary file · no text preview"; return; }
-        const t = theme(), ext = path.includes(".") ? path.split(".").pop() : "txt";
-        if (MARKDOWN.has(ext.toLowerCase())) {
+        const t = theme(), ext = path.includes(".") ? path.split(".").pop().toLowerCase() : "txt";
+        const value = text.length > 400000 ? text.slice(0, 400000) + "\n… (file truncated)" : text;
+        if (MARKDOWN.has(ext)) {
           this.markdown = text.length > 400000 ? text.slice(0, 400000) + "\n\n… (file truncated)" : text;
           // TextView draws no images: lift them out and load each into the app folder.
           this.mdParts = splitImages(this.markdown);
-          const dir = `${root}/${path}`.split("/").slice(0, -1).join("/");
+          const dir = full.split("/").slice(0, -1).join("/");
           for (const part of this.mdParts) for (const img of part.images ?? []) {
             if (on) { this.images.set(img, null); continue; } // a file on another machine: alt text only
             cx.spawn(async cx => {
@@ -165,18 +300,28 @@ export default class Files extends View {
             });
           }
         }
-        this.code = EditorState.new({ language: LANG[ext] ?? ext, readonly: true,
-          value: text.length > 400000 ? text.slice(0, 400000) + "\n… (file truncated)" : text,
-          font_family: settings().font_family, font_size: 12,
-          syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
+        this.code = EditorState.new({ language: LANG[ext] ?? ext, readonly: true, value, soft_wrap: this.wrap,
+          syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6,
+            heading: t.ansi4, strong: t.foreground, code: t.ansi2, quote: t.dim, list: t.ansi5, link: t.ansi6 } });
+        const range = line ? lineRange(value, line) : null;
+        if (range) this.code.set_selected_range(range);
       } catch { if (this.file === path && this.current(context)) this.fileError = "Cannot preview this file (binary, too large, or unreadable)"; }
       finally { cx.notify(); }
     });
   }
 
+  setWrap(wrap, cx) {
+    this.wrap = wrap;
+    try { localStorage.setItem(WRAP_KEY, wrap ? "1" : "0"); } catch {}
+    this.code?.set_soft_wrap(wrap);
+    cx.notify();
+  }
+
+  fullPath() { return this.file?.startsWith("/") ? this.file : `${this.root}/${this.file}`; }
+
   // Opens the shown file in the configured editor (local files only).
   openInEditor() {
-    openInEditor(`${this.root}/${this.file}`);
+    openInEditor(this.fullPath());
   }
 
   // One markdown image: drawn at its own size (or its width="..."), no wider than
@@ -191,6 +336,12 @@ export default class Files extends View {
     return div().id(`md-img-${key}`).flex_none().cursor_pointer().tooltip(img.alt || img.src)
       .on_click(() => exec("open", [img.href && /^https?:/i.test(img.href) ? img.href : info.open]).catch(() => {}))
       .child(image(info.path).w(w).h(h));
+  }
+
+  headerButton(id, label, onClick, t, on = false) {
+    return div().id(id).flex_none().px(8).py(2).rounded(6).cursor_pointer().text_size(12)
+      .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted).hover(s => s.bg(t.hover).text_color(t.foreground))
+      .on_click(onClick).child(label);
   }
 
   rows(prefix, depth, out, t) {
@@ -211,30 +362,33 @@ export default class Files extends View {
 
   render(cx) {
     if (key() !== this.context?.key) this.refresh(cx);
+    else this.refreshIfDue(cx);
+    this.takeOpen(cx);
     const t = theme();
+    const preview = this.markdown != null && !this.source;
+    const font = this.code ? settings() : null;
     return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .when(Boolean(this.file), el => el.child(div().id("files-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => { this.show(null); cx.notify(); }).child("←")))
         .child(div().font_semibold().child("Files"))
         .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.file ?? this.root?.split(/[\\/]/).pop() ?? ""))
-        .when(this.markdown != null && Boolean(this.file), el => el.child(div().id("files-md-toggle").flex_none().px(8).py(2).rounded(6).cursor_pointer()
-          .text_size(12).bg(t.chrome).text_color(t.muted).hover(s => s.bg(t.hover).text_color(t.foreground))
-          .on_click((_e, cx) => { this.source = !this.source; cx.notify(); })
-          .child(this.source ? "Preview" : "Source")))
-        .when(Boolean(this.file) && !this.on, el => el.child(div().id("files-open-editor").flex_none().px(8).py(2).rounded(6).cursor_pointer()
-          .text_size(12).bg(t.chrome).text_color(t.muted).hover(s => s.bg(t.hover).text_color(t.foreground))
-          .on_click(() => this.openInEditor())
-          .child(`Open in ${shared("herdr-mods.editor") ?? this.editor}`))))
+        .when(this.markdown != null && Boolean(this.file), el => el.child(
+          this.headerButton("files-md-toggle", this.source ? "Preview" : "Source", (_e, cx) => { this.source = !this.source; cx.notify(); }, t)))
+        .when(Boolean(this.code) && !preview, el => el.child(
+          this.headerButton("files-md-wrap", "Wrap", (_e, cx) => this.setWrap(!this.wrap, cx), t, this.wrap)))
+        .when(Boolean(this.file) && !this.on, el => el.child(
+          this.headerButton("files-open-editor", `Open in ${shared("herdr-mods.editor") ?? this.editor}`, () => this.openInEditor(), t))))
       .when(!this.file, el => el.child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.rows("", 0, [], t))
         .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
         .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")))))
-      .when(Boolean(this.file), el => el.child(
-        this.markdown != null && !this.source
-          ? v_flex().id("files-md-preview").flex_1().min_h(0).overflow_y_scrollbar().px(18).py(14).gap(6)
-              .on_size_change((size, cx) => { if (Math.abs((this.mdWidth ?? 0) - size.width) > 1) { this.mdWidth = size.width; cx.notify(); } })
-              .children((this.mdParts ?? [{ md: this.markdown }]).map((part, i) => part.md !== undefined
-                ? TextView.markdown(`md-${this.file}-${i}`, part.md).selectable(true)
-                : h_flex().flex_wrap().gap(8).items_start().children(part.images.map((img, j) => this.mdImage(img, `${i}-${j}`, t)))))
-          : this.code ? Editor.new(this.code).flex_1().min_h(0) : div().p(12).text_color(t.dim).child(this.fileError || "Loading file…")));
+      .when(Boolean(this.file), el => el.child(preview
+        ? v_flex().id("files-md-preview").flex_1().min_h(0).overflow_y_scrollbar().px(18).py(14).gap(6)
+            .on_size_change((size, cx) => { if (Math.abs((this.mdWidth ?? 0) - size.width) > 1) { this.mdWidth = size.width; cx.notify(); } })
+            .children((this.mdParts ?? [{ md: this.markdown }]).map((part, i) => part.md !== undefined
+              ? TextView.markdown(`md-${this.file}-${i}`, part.md).selectable(true)
+              : h_flex().flex_wrap().gap(8).items_start().children(part.images.map((img, j) => this.mdImage(img, `${i}-${j}`, t)))))
+        : this.code
+        ? Editor.new(this.code).font_family(font.font_family).text_size(font.font_size).flex_1().min_h(0)
+        : div().p(12).text_color(t.dim).child(this.fileError || "Loading file…")));
   }
 }

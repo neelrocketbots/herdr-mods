@@ -52,14 +52,14 @@
         {
           "id": "usage",
           "type": "block",
-          "size": {
-            "px": 62
-          },
           "content": {
             "mod": "usage-limits",
             "props": {
               "block": "usage"
             }
+          },
+          "size": {
+            "px": 62
           }
         },
         {
@@ -151,6 +151,7 @@
                     "width": 1,
                     "color": "accent"
                   },
+                  "veil": 0.4,
                   "radius": 10,
                   "gap": 8,
                   "lone": true
@@ -187,8 +188,8 @@
                       }
                     },
                     {
-                      "type": "block",
                       "id": "worktrees",
+                      "type": "block",
                       "content": {
                         "mod": "issue-worktree"
                       }
@@ -236,5 +237,8 @@
     12,
     16
   ],
-  "preview": "layouts/custom-herdr.svg"
+  "preview": "layouts/custom-herdr.svg",
+  "link_handlers": [
+    "files-md"
+  ]
 }

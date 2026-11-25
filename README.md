@@ -23,7 +23,7 @@ and a screenshot. Take one or all.
 | [`quick-links`](quick-links) | Top bar: GitHub repo, the branch's PR with a CI dot, open PRs in other repos that name the branch's Linear issue, the Linear issue, your editor. Adds **PRs**, **Worktree** and **Merged · clean up** when `pr-inbox` / `issue-worktree` are installed |
 | [`issue-worktree`](issue-worktree) | Side panel, or dialog (⌘⌥N): make `<repo>/.worktrees/<name>` on branch `<name>` from a fresh `origin/master`; list worktrees with PR and CI; rename, remove, open in your editor |
 | [`pr-inbox`](pr-inbox) | PRs waiting on your review and your own, across repos. A side panel in `custom-herdr`, a dialog (⌘⌥P) anywhere else |
-| [`files-md`](files-md) | Herdr's Files panel, plus rendered markdown (images included) and open in your editor |
+| [`files-md`](files-md) | Herdr's Files panel, plus rendered markdown (images included), Ctrl/Cmd-clicked terminal file paths opening in it at their line, wrap, and open in your editor |
 | [`changes-editor`](changes-editor) | Herdr's Changes panel, plus open in your editor |
 | [`usage-limits`](usage-limits) | Sidebar: Claude (each account) and Codex rate limits as status-line style gauges with reset times |
 | [`custom-herdr`](custom-herdr) | Layout: Herdr's main layout with all of the above wired in (bundles its own copies of the mods) |
@@ -52,7 +52,7 @@ into yours without replacing keys you already use. Your settings file,
 `herdr-mods.json`, is created from `herdr-mods.example.json` once and never
 overwritten.
 
-Requires `git`, `jq`, and `gh` signed in (`gh auth status`).
+Requires Herdr 0.1.18 or newer, `git`, `jq`, and `gh` signed in (`gh auth status`).
 
 ## Settings: `~/.config/herdr-app/herdr-mods.json`
 
@@ -107,7 +107,7 @@ They're trusted code, like any Herdr mod, and run as you:
 | quick-links | `git` (remote, branch, rev-parse), `gh pr view`, `gh search prs`, your editor, `open`; with a Linear key: `security`, `curl` | GitHub, through `gh`; Linear's API | reads `herdr-mods.json` and other mods' `mod.json`; reads the Linear key from the Keychain |
 | issue-worktree | `git` (fetch, worktree add/move/remove, branch -m/-D, status), `gh api graphql`, your editor; with a Linear key: `security`, `curl` | GitHub (`gh`), your git remote (`git fetch`), Linear's API | appends `.worktrees/` to the repo's `.git/info/exclude` when it isn't ignored; reads `herdr-mods.json`; reads the Linear key from the Keychain |
 | pr-inbox | `gh api graphql`, `open` | GitHub, through `gh` | none |
-| files-md | Herdr's own (`git`, file reads), your editor, `cp`/`curl`/`sips` for markdown images | remote images in markdown files (`curl`) | reads `herdr-mods.json`; caches images in `data/files-md/img` |
+| files-md | Herdr's own (`git`, file reads), your editor, `cp`/`curl`/`sips` for markdown images, `test -f` on a Cmd-clicked terminal path | remote images in markdown files (`curl`) | reads `herdr-mods.json`; caches images in `data/files-md/img` |
 | changes-editor | Herdr's own (`git`, file reads) plus your editor | none added | reads `herdr-mods.json` |
 | usage-limits | `security`, `plutil`, `shasum`, `curl`; `find`, `grep`, `stat` | Anthropic's usage endpoint, with each Claude Code login's token | reads Claude Code's Keychain logins (token piped to `curl`, never stored) and `~/.codex/sessions` |
 

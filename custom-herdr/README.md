@@ -14,6 +14,9 @@ the worktree dialog and the PR inbox.
   (`files-md`), `changes` (`changes-editor`), `prs` (`pr-inbox`) and
   `worktrees` (`issue-worktree`). The Files, Changes, PRs and Worktree buttons
   toggle them.
+- Panes you're not in fade a little (`"veil": 0.4` on the pane frame; 0 turns it off).
+- Ctrl/Cmd-clicking a file path in a terminal opens it in the Files panel
+  (`"link_handlers": ["files-md"]`).
 - `layouts/custom-herdr.svg`: its picture in Settings.
 - A `usage` block (`usage-limits`) above the sidebar footer.
 - `mods/`: copies of all six mods, so the layout installs on its own.

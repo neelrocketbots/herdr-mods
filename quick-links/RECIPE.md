@@ -43,7 +43,8 @@ folder, git remote and branch, and changes as you move between terminals.
 
 - A 300ms timer compares the focused terminal's machine, folder and branch with
   the last ones. It works only when they change, or every 20s otherwise.
-  Focus on an overlay keeps what's shown.
+  Focus on an overlay keeps what's shown. While `window()?.visible` is false
+  (minimized, hidden, covered) the timer does nothing.
 - The repo comes from `git remote get-url origin` (GitHub URLs only). The branch
   comes from the pane, else `git branch --show-current`. There's no PR lookup
   on `main`, `master`, `dev`, `develop`, `staging` or `production`.
@@ -76,7 +77,10 @@ folder, git remote and branch, and changes as you move between terminals.
   after a create, rename or remove; none at 0. A layout without that slot gets the issue-worktree
   dialog (`openOverlay`, a dialog 460px wide) with `{ cwd }`. The key command
   `quick-links.worktrees` (from `nextCommand()`) does the same for the focused
-  terminal's folder. Worktree and clean up only appear when
+  terminal's folder. `mod.json`'s `"palette"` lists `quick-links.<command>`
+  entries titled `Custom: …`: `new-worktree` (shows the panel without
+  toggling), `worktrees`, `prs`, `repo`, `pr` (the PR page, not the failing
+  run), `linear` and `editor`; a missing link shows an info toast. Worktree and clean up only appear when
   `mods/issue-worktree/mod.json` exists. They are local only: nothing for
   spaces on other machines.
 - PRs: in a layout with the `prs` slot it toggles the panel (`layout.select` on
