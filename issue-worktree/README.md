@@ -5,7 +5,7 @@ and it makes `<repo>/.worktrees/<name>` on a branch of that name, from a fresh
 `origin/master`, and opens a space there. Below, every existing worktree with
 its PR and CI, ready to open, rename or remove.
 
-![The New worktree dialog: the name WEB-140, then four worktrees with PR state, CI dots, open, editor, rename and remove, one asking to confirm Remove](screenshot.png)
+![The Worktrees panel: the name WEB-140, then four worktrees with PR state, CI dots and Linear status; one asks to confirm Remove and names what's still running in it, one is locked](screenshot.png)
 
 ## What it does
 

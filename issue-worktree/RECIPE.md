@@ -154,7 +154,8 @@ with its pull request and CI, an open-in-editor button, rename and remove.
 - A process running inside the worktree (a dev server, an agent's shell) can make
   `git worktree remove` stop partway: git drops its record and the `.git` file but
   files stay, and every retry fails with "is not a working tree". The confirm lists
-  such processes (`lsof -a -d cwd`); on failure the mod runs `git worktree prune`
+  such processes (`lsof -a -d cwd`, named by `ps -o comm`: lsof gives the process
+  title, and Claude Code's is its version, like "2.1.327"); on failure the mod runs `git worktree prune`
   and, if git no longer lists the path and it's inside `<repo>/.worktrees/`,
   deletes the folder.
 

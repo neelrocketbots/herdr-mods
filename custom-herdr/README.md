@@ -3,9 +3,9 @@
 Herdr's main layout with the whole kit wired in: `quick-links` in the top bar,
 `files-md`, `changes-editor`, `pr-inbox` and `issue-worktree` as the side panels, `usage-limits`
 at the bottom of the sidebar, and shortcuts for
-the worktree dialog and the PR inbox.
+the Worktrees panel and the PR inbox.
 
-![The custom-herdr layout: spaces and agents on the left, a Claude Code pane, quick links in the top bar and the PR inbox open on the right](screenshot.png)
+![The custom-herdr layout: spaces with their worktrees and agents on the left, a focused Claude Code pane over a faded shell, quick links in the top bar and the PR inbox open on the right](screenshot.png)
 
 ## What's in it
 
