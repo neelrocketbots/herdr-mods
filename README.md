@@ -4,7 +4,7 @@
 
 Mods and a layout for the [Herdr](https://herdr.dev) desktop app, built around
 one git worktree per Linear issue: GitHub, PR, CI and Linear links for the
-focused terminal, a worktree dialog, a PR inbox, markdown previews, and "open in
+focused terminal, a worktrees panel, a PR inbox, markdown previews, and "open in
 your editor" everywhere.
 
 ![The custom-herdr layout: quick links in the top bar, the PR inbox open on the right](custom-herdr/screenshot.png)
@@ -29,7 +29,7 @@ and a screenshot. Take one or all.
 | [`custom-herdr`](custom-herdr) | Layout: Herdr's main layout with all of the above wired in (bundles its own copies of the mods) |
 
 <p>
-  <img src="issue-worktree/screenshot.png" alt="The worktree dialog: a name field, then the existing worktrees with their PRs, CI, rename and remove" width="49%">
+  <img src="issue-worktree/screenshot.png" alt="The Worktrees panel: a name field, then the existing worktrees with their PRs, CI and Linear status, one confirming Remove" width="49%">
   <img src="files-md/screenshot.png" alt="The Files panel showing a rendered markdown file with Source and Open in Zed buttons" width="42%">
 </p>
 
@@ -122,7 +122,7 @@ uncommitted changes).
 - quick-links keeps its lookups in localStorage, so links show at once after a
   restart and refresh behind. A PR is looked up again after 30 s while its CI
   runs, 60 s while open, 10 min once merged or closed.
-- The worktree dialog fetches every worktree's PR in one GitHub request and
+- The worktrees panel fetches every worktree's PR in one GitHub request and
   remembers it between opens for a minute.
 - The PR inbox refreshes every 3 minutes while shown, every 10 while hidden, and
   keeps its last result on disk. Shared values are written only when they change

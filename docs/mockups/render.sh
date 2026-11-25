@@ -13,7 +13,7 @@ shot() { # shot <url> <out> <width> <height>
 }
 # Each unit's screenshot.png: the UI on its own (READMEs).
 shot "file://$here/topbar.html" "$repo/quick-links/screenshot.png" 920 160
-shot "file://$here/worktree.html" "$repo/issue-worktree/screenshot.png" 568 600
+shot "file://$here/worktree.html" "$repo/issue-worktree/screenshot.png" 460 510
 shot "file://$here/prinbox.html" "$repo/pr-inbox/screenshot.png" 440 510
 shot "file://$here/files.html" "$repo/files-md/screenshot.png" 488 524
 shot "file://$here/changes.html" "$repo/changes-editor/screenshot.png" 460 510

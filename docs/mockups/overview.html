@@ -1,5 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"><style>
+  .veil { position: relative; } .veil::after { content: ""; position: absolute; inset: 0; background: rgba(18,19,22,.4); }
   .usage { width: 268px; background: var(--chrome); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px 6px; gap: 2px; }
   .acct { padding: 4px 8px; gap: 3px; border-radius: 7px; font-size: 12.5px; }
   .gs { gap: 10px; font-size: 11px; }
@@ -13,13 +14,16 @@
   <div class="sidebar col">
     <div class="lights row"><i></i><i></i><i></i></div>
     <div class="label">Spaces</div>
-    <div class="space row"><span class="badge" style="background:#e0a85a">W</span>web-app</div>
-    <div class="space row sub on"><i data-i="worktree" style="color:var(--dim)"></i>WEB-128<span class="branch dim">WEB-128</span></div>
-    <div class="space row sub"><i data-i="worktree" style="color:var(--dim)"></i>WEB-131<span class="branch dim">WEB-131</span></div>
+    <div class="space row"><span class="badge" style="background:#e0a85a">W</span>web-app<span class="branch dim" style="margin-left:auto;font-size:11px">master</span></div>
+    <div class="space row sub on"><i data-i="worktree" style="color:var(--dim)"></i>WEB-128</div>
+    <div class="space row sub"><i data-i="worktree" style="color:var(--dim)"></i>WEB-131</div>
+    <div class="space row sub"><i data-i="worktree" style="color:var(--dim)"></i>WEB-112<span class="branch dim">hotfix/WEB-112</span></div>
     <div class="space row"><span class="badge" style="background:#6fbf73">A</span>api</div>
     <div class="space row"><span class="badge" style="background:#8fb3e8">D</span>docs</div>
     <div class="label" style="margin-top:18px">Agents</div>
-    <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>WEB-128<span class="dim trunc">· invoice export</span><span class="ago">2m</span></div>
+    <div class="label" style="padding-top:2px;color:var(--orange)">Working&nbsp; 1</div>
+    <div class="agent row on" style="background:var(--raised)"><i data-i="claude" style="color:var(--orange)"></i>WEB-128<span class="dim trunc">· invoice export</span><span class="ago">2m</span></div>
+    <div class="label" style="padding-top:8px">Idle&nbsp; 2</div>
     <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>WEB-131<span class="dim trunc">· chart tooltips</span><span class="ago">9m</span></div>
     <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>api<span class="dim trunc">· rate limits</span><span class="ago">31m</span></div>
     <div class="grow"></div>
@@ -37,7 +41,7 @@
       <div class="btn row"><i data-i="file"></i>Files</div>
       <div class="btn row"><i data-i="changes"></i>Changes</div>
       <div class="btn row on"><i data-i="pr"></i>PRs<span class="count">3</span></div>
-      <div class="btn row"><i data-i="worktree"></i>Worktree</div>
+      <div class="btn row"><i data-i="worktree"></i>Worktree<span class="count">3</span></div>
       <div class="sep"></div>
       <div class="btn row"><i data-i="github"></i>web-app</div>
       <div class="btn row"><i data-i="pr" style="color:var(--green)"></i>#482<span class="dot green" style="width:6px;height:6px"></span></div>
@@ -45,6 +49,7 @@
       <div class="btn row"><i data-i="editor"></i>Zed</div>
     </div>
     <div class="work row" style="align-items:stretch">
+      <div class="col grow" style="gap:8px">
       <div class="pane col focus">
         <div class="head row"><i data-i="claude" style="color:var(--orange)"></i>Claude Code<span class="dim">~/code/web-app/.worktrees/WEB-128</span></div>
 <div class="term"><span class="p">❯</span> Add CSV export to the invoices table (WEB-128)
@@ -62,6 +67,14 @@
 
 <span class="p">❯</span> <span style="background:#c9cbd0">&nbsp;</span>
 </div>
+      </div>
+      <div class="pane col veil" style="flex:none;height:150px">
+        <div class="head row"><span class="dim">›_</span>zsh<span class="dim">~/code/web-app/.worktrees/WEB-128</span></div>
+<div class="term"><span class="p">➜</span> pnpm dev
+  <span class="b">VITE</span> ready in 412 ms
+  ➜  Local:   <span class="b">http://localhost:5173/</span>
+</div>
+      </div>
       </div>
       <div class="side col">
         <div class="head row"><b>Pull requests</b><div class="grow"></div><span class="dim" style="font-size:11px">updated 1m ago</span><i data-i="refresh" style="color:var(--muted)"></i></div>
