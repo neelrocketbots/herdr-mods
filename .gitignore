@@ -4,3 +4,7 @@ jsconfig.json
 node_modules/
 .DS_Store
 *.error
+
+# Local design notes (specs, plans), not published.
+docs/superpowers/
+.superpowers/

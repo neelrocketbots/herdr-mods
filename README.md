@@ -4,8 +4,8 @@
 
 Mods and a layout for the [Herdr](https://herdr.dev) desktop app, built around
 one git worktree per Linear issue: GitHub, PR, CI and Linear links for the
-focused terminal, a worktrees panel, a PR inbox, markdown previews, and "open in
-your editor" everywhere.
+focused terminal, a worktrees panel, a PR inbox, markdown previews, compact
+spaces and agents lists, and "open in your editor" everywhere.
 
 ![The custom-herdr layout: quick links in the top bar, the PR inbox open on the right](custom-herdr/screenshot.png)
 
@@ -26,6 +26,8 @@ and a screenshot. Take one or all.
 | [`files-md`](files-md) | Herdr's Files panel, plus rendered markdown (images included), Ctrl/Cmd-clicked terminal file paths opening in it at their line, wrap, and open in your editor |
 | [`changes-editor`](changes-editor) | Herdr's Changes panel, plus open in your editor |
 | [`usage-limits`](usage-limits) | Sidebar: Claude (each account) and Codex rate limits as status-line style gauges with reset times |
+| [`spaces-compact`](spaces-compact) | Herdr's Spaces list with smaller rows and text, so more spaces fit |
+| [`agents-compact`](agents-compact) | Herdr's Agents list with smaller rows and text, so more agents fit |
 | [`custom-herdr`](custom-herdr) | Layout: Herdr's main layout with all of the above wired in (bundles its own copies of the mods) |
 
 <p>
@@ -110,6 +112,7 @@ They're trusted code, like any Herdr mod, and run as you:
 | files-md | Herdr's own (`git`, file reads), your editor, `cp`/`curl`/`sips` for markdown images, `test -f` on a Cmd-clicked terminal path | remote images in markdown files (`curl`) | reads `herdr-mods.json`; caches images in `data/files-md/img` |
 | changes-editor | Herdr's own (`git`, file reads) plus your editor | none added | reads `herdr-mods.json` |
 | usage-limits | `security`, `plutil`, `shasum`, `curl`; `find`, `grep`, `stat` | Anthropic's usage endpoint, with each Claude Code login's token | reads Claude Code's Keychain logins (token piped to `curl`, never stored) and `~/.codex/sessions` |
+| spaces-compact, agents-compact | what Herdr's own `spaces` / `agents` run | as Herdr's | as Herdr's |
 
 Nothing is sent anywhere else. `gh` uses its own login; the Linear key, if you
 add one, stays in your Keychain. usage-limits reads Claude Code's own Keychain

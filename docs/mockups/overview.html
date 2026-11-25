@@ -8,6 +8,22 @@
   .g > .tr { flex: 1; min-width: 12px; } .tr { height: 3px; border-radius: 2px; background: var(--input); overflow: hidden; display: inline-flex; }
   .tr span { height: 100%; border-radius: 2px; }
   svg.s { width: 14px; height: 14px; flex: none; }
+  .tasks { border-top: 1px solid var(--border); padding: 6px 0 6px; gap: 1px; }
+  .th { padding: 2px 8px 4px; gap: 6px; font-size: 11px; color: var(--dim); }
+  .bar { height: 3px; border-radius: 2px; background: var(--input); overflow: hidden; width: 44px; display: inline-flex; flex: none; }
+  .bar span { background: var(--green); }
+  .task { padding: 3px 8px; gap: 8px; border-radius: 6px; align-items: flex-start; font-size: 12px; }
+  .task .mark { width: 13px; height: 13px; flex: none; margin-top: 2px; display: grid; place-items: center; }
+  .ring { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--dim); }
+  .spin { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #3a3d44; border-top-color: var(--orange); border-right-color: var(--orange); }
+  .check { width: 12px; height: 12px; border-radius: 50%; background: #2d4a31; color: var(--green); font-size: 8px; font-weight: 700; display: grid; place-items: center; }
+  .task .t { color: #c9cbd0; }
+  .task.now { background: var(--raised); }
+  .task.now .t { color: var(--fg); }
+  .task .s { font-size: 11px; color: var(--orange); margin-top: 1px; }
+  .task.done .t { color: var(--dim); }
+  .space, .agent { height: 26px; font-size: 12px; }
+  .space.sub { height: 25px; }
 </style></head>
 <body>
 <div class="window">

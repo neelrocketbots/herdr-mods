@@ -1,6 +1,6 @@
 #!/bin/sh
 # Static checks for CI and before a commit (no Herdr app needed):
-# every mod script parses, every JSON file is valid, the shared helpers are
+# every mod script parses, unit tests pass, every JSON file is valid, the shared helpers are
 # identical copies, the custom-herdr bundle matches the units, and every unit
 # has its RECIPE.md, preview.png, README.md and screenshot.png.
 set -eu
@@ -9,6 +9,7 @@ fail=0
 err() { echo "FAIL: $*" >&2; fail=1; }
 
 for f in */mods/*/*.js; do node --check "$f" 2>/dev/null || err "$f doesn't parse"; done
+for f in */test/*.test.mjs; do [ -f "$f" ] && { out=$(node --test "$f" 2>&1) || { err "$f fails (node --test $f)"; echo "$out" | grep -E "^not ok|^# |error|Error" | head -20 >&2; }; }; done
 for f in $(git ls-files '*.json'); do jq empty "$f" 2>/dev/null || err "$f isn't valid JSON"; done
 for helper in editor.js ci.js linear.js; do
 	n=$(for f in */mods/*/"$helper"; do [ -f "$f" ] && shasum "$f" | cut -d' ' -f1; done | sort -u | wc -l | tr -d ' ')

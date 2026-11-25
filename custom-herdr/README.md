@@ -1,8 +1,8 @@
 # custom-herdr
 
 Herdr's main layout with the whole kit wired in: `quick-links` in the top bar,
-`files-md`, `changes-editor`, `pr-inbox` and `issue-worktree` as the side panels, `usage-limits`
-at the bottom of the sidebar, and shortcuts for
+`files-md`, `changes-editor`, `pr-inbox` and `issue-worktree` as the side panels,
+`spaces-compact` and `agents-compact` for the sidebar lists, `usage-limits` at the bottom of the sidebar, and shortcuts for
 the Worktrees panel and the PR inbox.
 
 ![The custom-herdr layout: spaces with their worktrees and agents on the left, a focused Claude Code pane over a faded shell, quick links in the top bar and the PR inbox open on the right](screenshot.png)
@@ -18,8 +18,10 @@ the Worktrees panel and the PR inbox.
 - Ctrl/Cmd-clicking a file path in a terminal opens it in the Files panel
   (`"link_handlers": ["files-md"]`).
 - `layouts/custom-herdr.svg`: its picture in Settings.
+- Spaces and Agents in the sidebar use `spaces-compact` and `agents-compact`
+  (smaller rows, so more fit).
 - A `usage` block (`usage-limits`) above the sidebar footer.
-- `mods/`: copies of all six mods, so the layout installs on its own.
+- `mods/`: copies of all eight mods, so the layout installs on its own.
 - `keys.json`: **⌘⌥N** worktrees panel (in this layout; the dialog elsewhere), **⌘⌥P** PR inbox.
 
 ## Install

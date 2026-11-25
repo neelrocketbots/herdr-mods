@@ -1,0 +1,53 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"><style>
+  /* compact-sidebar: smaller rows and text for Spaces and Agents */
+  .space, .agent { height: 26px; font-size: 12px; }
+  .space.sub { height: 25px; }
+
+  .usage { gap: 2px; }
+  .acct { padding: 4px 8px; gap: 3px; border-radius: 7px; font-size: 12.5px; }
+  .gs { gap: 10px; font-size: 11px; }
+  .g { gap: 4px; flex: 1; min-width: 0; } .g > span { flex: none; }
+  .g > .tr { flex: 1; min-width: 12px; } .tr { height: 3px; border-radius: 2px; background: var(--input); overflow: hidden; display: inline-flex; }
+  .tr span { height: 100%; border-radius: 2px; }
+  svg.s { width: 14px; height: 14px; flex: none; }
+  .tasks { border-top: 1px solid var(--border); padding: 6px 0 6px; gap: 1px; }
+  .th { padding: 2px 8px 4px; gap: 6px; font-size: 11px; color: var(--dim); }
+  .bar { height: 3px; border-radius: 2px; background: var(--input); overflow: hidden; width: 44px; display: inline-flex; flex: none; }
+  .bar span { background: var(--green); }
+  .task { padding: 3px 8px; gap: 8px; border-radius: 6px; align-items: flex-start; font-size: 12px; }
+  .task .mark { width: 13px; height: 13px; flex: none; margin-top: 2px; display: grid; place-items: center; }
+  .ring { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--dim); }
+  .spin { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #3a3d44; border-top-color: var(--orange); border-right-color: var(--orange); }
+  .check { width: 12px; height: 12px; border-radius: 50%; background: #2d4a31; color: var(--green); font-size: 8px; font-weight: 700; display: grid; place-items: center; }
+  .task .t { color: #c9cbd0; }
+  .task.now { background: var(--raised); }
+  .task.now .t { color: var(--fg); }
+  .task .s { font-size: 11px; color: var(--orange); margin-top: 1px; }
+  .task.done .t { color: var(--dim); }
+</style></head>
+<body style="padding:20px">
+<div class="sidebar col" style="width:268px;height:720px;border:1px solid var(--border);border-radius:10px">
+  <div class="lights row"><i></i><i></i><i></i></div>
+  <div class="label">Spaces</div>
+  <div class="space row"><span class="badge" style="background:#e0a85a">W</span>web-app<span class="dim" style="margin-left:auto;font-size:11px">master</span></div>
+  <div class="space row sub on"><i data-i="worktree" style="color:var(--dim)"></i>WEB-128</div>
+  <div class="space row sub"><i data-i="worktree" style="color:var(--dim)"></i>WEB-131</div>
+  <div class="space row"><span class="badge" style="background:#6fbf73">A</span>api</div>
+  <div class="label" style="margin-top:14px">Agents</div>
+  <div class="label" style="padding-top:2px;color:var(--orange)">Working&nbsp; 1</div>
+  <div class="agent row" style="background:var(--raised)"><i data-i="claude" style="color:var(--orange)"></i>WEB-128<span class="dim trunc">· invoice export</span><span class="ago">2m</span></div>
+  <div class="label" style="padding-top:8px">Idle&nbsp; 2</div>
+  <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>WEB-131<span class="dim trunc">· chart tooltips</span><span class="ago">9m</span></div>
+  <div class="agent row"><i data-i="claude" style="color:var(--orange)"></i>api<span class="dim trunc">· rate limits</span><span class="ago">31m</span></div>
+  <div class="grow"></div>
+
+  <div class="col usage" style="border-top:1px solid var(--border);padding-top:6px">
+    <div class="label" style="padding:2px 8px 4px">Usage</div>
+    <div class="acct col"><div class="row" style="gap:8px"><span style="width:16px;height:16px;border-radius:4px;background:#d97706;display:grid;place-items:center;flex:none"><svg viewBox="0 0 24 24" style="width:11px;height:11px"><path fill-rule="evenodd" clip-rule="evenodd" d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z" fill="#fff"/></svg></span><span>Claude Max</span></div><div class="gs row"><span class="g row"><span class="dim">5h</span><span class="tr"><span style="width:63%;background:var(--yellow)"></span></span><span style="color:var(--yellow)">63%</span><span class="dim">3h</span></span><span class="g row"><span class="dim">7d</span><span class="tr"><span style="width:41%;background:var(--green)"></span></span><span style="color:var(--green)">41%</span><span class="dim">3d</span></span></div></div>
+    <div class="acct col"><div class="row" style="gap:8px"><svg class="s" viewBox="0 0 24 24"><rect width="24" height="24" rx="5" fill="#fff"/><path d="M7 9l3 3-3 3M12 15h5" stroke="#111" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Codex</span></div><div class="gs row"><span class="g row"><span class="dim">5h</span><span class="tr"><span style="width:21%;background:var(--green)"></span></span><span style="color:var(--green)">21%</span><span class="dim">4h</span></span><span class="g row"><span class="dim">7d</span><span class="tr"><span style="width:8%;background:var(--green)"></span></span><span style="color:var(--green)">8%</span><span class="dim">6d</span></span></div></div>
+  </div>
+  <div class="row dim" style="border-top:1px solid var(--border);margin-top:6px;padding:10px 8px 2px;gap:8px;font-size:12.5px">⚙&nbsp; Settings</div>
+</div>
+<script src="icons.js"></script>
+</body></html>
