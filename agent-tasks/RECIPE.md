@@ -24,8 +24,9 @@ Code session working in the shown space: done, now, next. Read-only, live.
     time; click again to close): `#id · Done/In progress/Next`, the subject,
     the activeForm while in progress, and the description. On `background`
     with a `border`, 6px corners.
-- While a space is read (start, switch): three pulsing placeholder rows
-  (`.loop("opacity")`) instead of the list; the header shows just "Tasks".
+- While a space is read (start, switch): a pulsing placeholder bar in the
+  header where the label goes, and three pulsing placeholder rows instead of
+  the list when it's open (`.loop("opacity")`).
 - The rows scroll past 168px (about six).
 - Subagents, under the main list: a row each, the spinner while it has a task
   in progress (else ✓ when all done, or a ring), "↳ <description>" and

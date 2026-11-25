@@ -19,9 +19,8 @@
 //
 // The layout block (props.block) starts at 0px; this sizes it to its content.
 // With nothing to show it keeps its header line ("Tasks · no task list yet").
-// Every space starts folded to the header (click to open); the list's height
-// animates; placeholders pulse while a space is read. A click on a task opens
-// its details.
+// The list's height animates; placeholders pulse while a space is read. A
+// click on a task opens its details. The header folds it (remembered).
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { exec, hc, readTextFile, watchFolder, theme, run, props, checking, spaces, agents, window } from "herdr";
@@ -35,6 +34,7 @@ const RETRY_MS = 30_000;              // after a failed or timed-out read
 const ENDED_MS = 24 * 3600_000;
 const SUBS_MAX = 4;                   // subagents shown, most recent first
 const LIST_MAX = 168;                 // px of rows before the list scrolls (~6)
+const COLLAPSED_KEY = "agent-tasks.collapsed";
 const LAST_KEY = "agent-tasks.last";  // { spaceId: { path, label } }
 const READS_MAX = 400;                // transcripts remembered before the oldest are dropped
 
@@ -64,7 +64,7 @@ export default class AgentTasks extends View {
     this.loading = true;     // nothing read yet for this space: skeleton rows
     this.openKey = null;     // the task ("t:<id>") or subagent ("s:<label>") opened for details
     this.dirs = null; this.dirsAt = 0;
-    this.collapsed = true;   // every space starts folded to its header
+    try { this.collapsed = localStorage.getItem(COLLAPSED_KEY) === "1"; } catch { this.collapsed = false; }
     try { this.last = JSON.parse(localStorage.getItem(LAST_KEY) ?? "{}") ?? {}; } catch { this.last = {}; }
   }
 
@@ -248,6 +248,7 @@ export default class AgentTasks extends View {
 
   toggle(cx) {
     this.collapsed = !this.collapsed;
+    try { localStorage.setItem(COLLAPSED_KEY, this.collapsed ? "1" : "0"); } catch {}
     cx.notify();
   }
 
@@ -258,7 +259,7 @@ export default class AgentTasks extends View {
       const sid = activeSpace()?.id ?? null;
       const key = `${sid}|${pickAgents(agents(), sid).map((a) => a.address).join(",")}`;
       if (key !== this.key) { this.key = key; this.dirty = true; this.wake?.(); }
-      if (sid !== this.spaceId) { this.loading = true; this.collapsed = true; this.openKey = null; this.spaceId = sid; }
+      if (sid !== this.spaceId) { this.loading = true; this.openKey = null; this.spaceId = sid; }
     }
     const t = theme(), v = this.view;
     const root = v_flex().id("agent-tasks").w_full().bg(t.chrome).text_color(t.foreground);
