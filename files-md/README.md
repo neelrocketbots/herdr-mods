@@ -12,6 +12,18 @@ lines wrap, and the shown file opens in your editor with one click.
   ones next to the file, and remote ones); **Source** shows the highlighted
   text, **Preview** switches back. A click on an image opens its link or the
   image.
+- **Task lists** (`- [ ]` / `- [x]`) show real checkboxes. Clicking one ticks
+  or unticks it in the file itself (only that line's box, and only if the
+  line hasn't changed since; otherwise the file is shown again as it is now).
+  Files on another machine, or cut short for size, show them read-only.
+- Fills in what Herdr's markdown view leaves out: **code blocks with syntax
+  colors**, **footnotes** (¹ in the text, notes gathered at the end), GitHub
+  **alerts** (`> [!NOTE]`, TIP, IMPORTANT, WARNING, CAUTION) as colored boxes,
+  **`<details>`** that fold, **definition lists**, `:emoji:` shortcodes,
+  `<kbd>` as code, `<sub>`/`<sup>` as ₂/² where Unicode has them, and simple
+  HTML tables as tables. Still not drawn: bold and italic (Herdr's view shows
+  them as plain text), math, mermaid diagrams (shown as code), `<mark>`
+  colors and CSS.
 - **Ctrl/Cmd-click a file path in a terminal** (`src/app.ts:42`, `README.md#L5`)
   and it opens in the Files panel, at that line, highlighted. Images,
   archives, folders, missing and remote files go to Herdr's usual opener. It's
