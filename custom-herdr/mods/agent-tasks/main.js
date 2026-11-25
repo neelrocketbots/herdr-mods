@@ -19,8 +19,9 @@
 //
 // The layout block (props.block) starts at 0px; this sizes it to its content.
 // With nothing to show it keeps its header line ("Tasks · no task list yet").
-// The list's height animates; skeleton rows show while a space is read. A
-// click on a task opens its details. The header folds it (remembered).
+// Every space starts folded to the header (click to open); the list's height
+// animates; placeholders pulse while a space is read. A click on a task opens
+// its details.
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { exec, hc, readTextFile, watchFolder, theme, run, props, checking, spaces, agents, window } from "herdr";
@@ -34,7 +35,6 @@ const RETRY_MS = 30_000;              // after a failed or timed-out read
 const ENDED_MS = 24 * 3600_000;
 const SUBS_MAX = 4;                   // subagents shown, most recent first
 const LIST_MAX = 168;                 // px of rows before the list scrolls (~6)
-const COLLAPSED_KEY = "agent-tasks.collapsed";
 const LAST_KEY = "agent-tasks.last";  // { spaceId: { path, label } }
 const READS_MAX = 400;                // transcripts remembered before the oldest are dropped
 
@@ -64,7 +64,7 @@ export default class AgentTasks extends View {
     this.loading = true;     // nothing read yet for this space: skeleton rows
     this.openKey = null;     // the task ("t:<id>") or subagent ("s:<label>") opened for details
     this.dirs = null; this.dirsAt = 0;
-    try { this.collapsed = localStorage.getItem(COLLAPSED_KEY) === "1"; } catch { this.collapsed = false; }
+    this.collapsed = true;   // every space starts folded to its header
     try { this.last = JSON.parse(localStorage.getItem(LAST_KEY) ?? "{}") ?? {}; } catch { this.last = {}; }
   }
 
@@ -248,7 +248,6 @@ export default class AgentTasks extends View {
 
   toggle(cx) {
     this.collapsed = !this.collapsed;
-    try { localStorage.setItem(COLLAPSED_KEY, this.collapsed ? "1" : "0"); } catch {}
     cx.notify();
   }
 
@@ -259,7 +258,7 @@ export default class AgentTasks extends View {
       const sid = activeSpace()?.id ?? null;
       const key = `${sid}|${pickAgents(agents(), sid).map((a) => a.address).join(",")}`;
       if (key !== this.key) { this.key = key; this.dirty = true; this.wake?.(); }
-      if (sid !== this.spaceId) { this.loading = true; this.openKey = null; this.spaceId = sid; }
+      if (sid !== this.spaceId) { this.loading = true; this.collapsed = true; this.openKey = null; this.spaceId = sid; }
     }
     const t = theme(), v = this.view;
     const root = v_flex().id("agent-tasks").w_full().bg(t.chrome).text_color(t.foreground);
@@ -306,7 +305,10 @@ export default class AgentTasks extends View {
       .when(Boolean(v), (el) => el.cursor_pointer().hover((st) => st.text_color(t.foreground))
         .on_click((_e, cx) => this.toggle(cx)))
       .child(div().flex_none().child("Tasks"))
-      .child(div().flex_1().min_w(0).truncate().child(this.loading ? "" : !v ? (this.reason ? `· ${this.reason}` : "") : faded ? `· ${v.label} · ended ${agoText(v.endedAt)} ago` : `· ${v.label}`))
+      .child(this.loading
+        // Reading the new space: a pulsing placeholder where the label goes.
+        ? div().flex_1().h(7).max_w(120).rounded(4).bg(t.input).loop("opacity", { from: 0.35, to: 0.9, period: 1100 })
+        : div().flex_1().min_w(0).truncate().child(!v ? (this.reason ? `· ${this.reason}` : "") : faded ? `· ${v.label} · ended ${agoText(v.endedAt)} ago` : `· ${v.label}`))
       .when(s.total > 0 && !this.loading, (el) => el
         .child(div().flex_none().w(44).h(3).rounded(2).bg(t.input).overflow_hidden()
           .child(div().h_full().w(Math.round((44 * pct) / 100)).bg(t.ansi2)))
@@ -355,7 +357,7 @@ export default class AgentTasks extends View {
     // the block follows it (fit, on every size change), so rows slide in and
     // out instead of jumping. On a space switch, skeleton rows until the new
     // space is read.
-    const open = (this.loading || !this.collapsed) && rows.length > 0;
+    const open = !this.collapsed && rows.length > 0;
     return root.child(v_flex().id("at-content").w_full().px(10).pt(6).pb(6).gap(1).border_t(1).border_color(t.border)
       .on_size_change((size) => this.fit(size.height))
       .child(header)

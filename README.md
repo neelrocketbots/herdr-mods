@@ -26,6 +26,8 @@ and a screenshot. Take one or all.
 | [`files-md`](files-md) | Herdr's Files panel, plus rendered markdown (images included), Ctrl/Cmd-clicked terminal file paths opening in it at their line, wrap, and open in your editor |
 | [`changes-editor`](changes-editor) | Herdr's Changes panel, plus open in your editor |
 | [`usage-limits`](usage-limits) | Sidebar: Claude (each account) and Codex rate limits as status-line style gauges with reset times |
+| [`spaces-compact`](spaces-compact) | Herdr's Spaces list with smaller rows and text, so more spaces fit |
+| [`agents-compact`](agents-compact) | Herdr's Agents list with smaller rows and text, so more agents fit |
 | [`agent-tasks`](agent-tasks) | Sidebar: the task list of the Claude Code session in the space you're in, and its subagents', live (done, now, next) |
 | [`custom-herdr`](custom-herdr) | Layout: Herdr's main layout with all of the above wired in (bundles its own copies of the mods) |
 
@@ -111,6 +113,7 @@ They're trusted code, like any Herdr mod, and run as you:
 | files-md | Herdr's own (`git`, file reads), your editor, `cp`/`curl`/`sips` for markdown images, `test -f` on a Cmd-clicked terminal path | remote images in markdown files (`curl`) | reads `herdr-mods.json`; caches images in `data/files-md/img` |
 | changes-editor | Herdr's own (`git`, file reads) plus your editor | none added | reads `herdr-mods.json` |
 | usage-limits | `security`, `plutil`, `shasum`, `curl`; `find`, `grep`, `stat` | Anthropic's usage endpoint, with each Claude Code login's token | reads Claude Code's Keychain logins (token piped to `curl`, never stored) and `~/.codex/sessions` |
+| spaces-compact, agents-compact | what Herdr's own `spaces` / `agents` run | as Herdr's | as Herdr's |
 | agent-tasks | `hc get`, `sh`, `stat`, `tail`, `head`, `od`, `grep` | none | reads `~/.claude*/sessions` and the session's transcript in `~/.claude*/projects`, never writes |
 
 Nothing is sent anywhere else. `gh` uses its own login; the Linear key, if you
