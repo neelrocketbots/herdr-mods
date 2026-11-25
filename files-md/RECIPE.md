@@ -26,7 +26,18 @@ works as in Herdr's panel.
   links, images), selectable, in a scrollable area with 18px by 14px padding.
   Images sit between the text sections at their own size (or their
   `width="..."`), no wider than the preview, side by side when a line holds
-  several; a click opens the image's link, else the image. Source
+  several; a click opens the image's link, else the image.
+  Task list lines (`- [ ] x`, `* [x] x`, `1. [X] x`, indented for nesting;
+  not inside code fences) are lifted out too (`markdown-tasks.js`, tested in
+  `test/`) and drawn as rows: a 14px box with 4px corners (`input` border on
+  `background`; checked: `accent` fill with a check in `background`), then
+  the text as markdown (`muted` when checked), 18px indent per level.
+  Clicking (a `Checkbox`) reads the file, flips `[ ]`/`[x]` on that line only
+  if it still holds that task in that state, and writes it with
+  `writeTextFile(path, next, expected)` (atomic, refused if the file changed);
+  otherwise the file is shown again. The preview and the Source editor
+  (`set_value`) update in place. Read-only for another machine's files and
+  files cut at 400,000 characters. Source
   view and every other file show a read-only editor with syntax colors, in the
   terminal font and size. Markdown source colors headings (`ansi4`), inline and
   fenced code (`ansi2`), lists (`ansi5`), quotes (`dim`) and link URLs

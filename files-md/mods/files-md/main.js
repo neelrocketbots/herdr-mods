@@ -6,10 +6,11 @@
 // rewritten on every start, so changes live here; the custom-herdr layout's
 // Files block points at it.
 import { View, div, svg, image } from "gpui-kit";
-import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, checking, shared } from "herdr";
+import { v_flex, h_flex, Editor, EditorState, TextView, Checkbox } from "gpui-base";
+import { spaces, panes, focused, exec, readTextFile, writeTextFile, watchFolder, theme, settings, window, checking, shared } from "herdr";
 import { openInEditor, editorName } from "./editor.js";
 import { splitImages, loadImage } from "./markdown-images.js";
+import { splitTasks, toggleTask } from "./markdown-tasks.js";
 import { OPEN_KEY } from "./link.js";
 
 // The panels share data in one VM, but their host tasks belong to separate copies.
@@ -287,8 +288,10 @@ export default class Files extends View {
         const value = text.length > 400000 ? text.slice(0, 400000) + "\n… (file truncated)" : text;
         if (MARKDOWN.has(ext)) {
           this.markdown = text.length > 400000 ? text.slice(0, 400000) + "\n\n… (file truncated)" : text;
-          // TextView draws no images: lift them out and load each into the app folder.
-          this.mdParts = splitImages(this.markdown);
+          // TextView draws no images or task checkboxes: lift task lines out
+          // (drawn as checkbox rows), then images (loaded into the app folder).
+          this.mdTruncated = text.length > 400000;
+          this.mdParts = splitTasks(this.markdown).flatMap((p) => (p.md !== undefined ? splitImages(p.md) : [p]));
           const dir = full.split("/").slice(0, -1).join("/");
           for (const part of this.mdParts) for (const img of part.images ?? []) {
             if (on) { this.images.set(img, null); continue; } // a file on another machine: alt text only
@@ -307,6 +310,38 @@ export default class Files extends View {
         if (range) this.code.set_selected_range(range);
       } catch { if (this.file === path && this.current(context)) this.fileError = "Cannot preview this file (binary, too large, or unreadable)"; }
       finally { cx.notify(); }
+    });
+  }
+
+  // Task list items: a checkbox each, the text as markdown. Clicking writes
+  // "[ ]" <-> "[x]" on that line of the file (local, untruncated files only),
+  // only if the line is still as shown; otherwise the file is read again.
+  mdTasks(tasks, i, t) {
+    const editable = !this.on && !this.mdTruncated;
+    return v_flex().gap(3).children(tasks.map((task, j) => h_flex().id(`md-task-${i}-${j}`).gap(8).items_start().pl(task.indent * 18)
+      .child(Checkbox.new(`md-check-${this.file}-${task.line}`).checked(task.checked).flex_none().mt(3).size(14).rounded(4)
+        .border_1().border_color(task.checked ? t.accent : t.input).bg(task.checked ? t.accent : t.background)
+        .flex().items_center().justify_center()
+        .when(editable, (el) => el.cursor_pointer().hover((st) => st.border_color(t.accent))
+          .on_change((_checked, cx) => this.toggleMdTask(task, cx)))
+        .when(task.checked, (el) => el.child(svg("mods/files-md/check.svg").size(10).text_color(t.background))))
+      .child(div().flex_1().min_w(0).when(task.checked, (el) => el.text_color(t.muted))
+        .child(TextView.markdown(`md-task-text-${this.file}-${task.line}`, task.text).selectable(true)))));
+  }
+
+  toggleMdTask(task, cx) {
+    const path = this.file, full = this.fullPath();
+    cx.spawn(async (cx) => {
+      const text = await readTextFile(full).catch(() => null);
+      if (this.file !== path || text == null) return;
+      const next = toggleTask(text, task);
+      if (next == null) { this.show(path, cx); cx.notify(); return; } // the file changed: show it as it is now
+      try { await writeTextFile(full, next, text); } catch { this.show(path, cx); cx.notify(); return; }
+      if (this.file !== path) return;
+      task.checked = !task.checked;
+      this.markdown = next;
+      this.code?.set_value(next);
+      cx.notify();
     });
   }
 
@@ -386,6 +421,7 @@ export default class Files extends View {
             .on_size_change((size, cx) => { if (Math.abs((this.mdWidth ?? 0) - size.width) > 1) { this.mdWidth = size.width; cx.notify(); } })
             .children((this.mdParts ?? [{ md: this.markdown }]).map((part, i) => part.md !== undefined
               ? TextView.markdown(`md-${this.file}-${i}`, part.md).selectable(true)
+              : part.tasks ? this.mdTasks(part.tasks, i, t)
               : h_flex().flex_wrap().gap(8).items_start().children(part.images.map((img, j) => this.mdImage(img, `${i}-${j}`, t)))))
         : this.code
         ? Editor.new(this.code).font_family(font.font_family).text_size(font.font_size).flex_1().min_h(0)

@@ -12,6 +12,10 @@ lines wrap, and the shown file opens in your editor with one click.
   ones next to the file, and remote ones); **Source** shows the highlighted
   text, **Preview** switches back. A click on an image opens its link or the
   image.
+- **Task lists** (`- [ ]` / `- [x]`) show real checkboxes. Clicking one ticks
+  or unticks it in the file itself (only that line's box, and only if the
+  line hasn't changed since; otherwise the file is shown again as it is now).
+  Files on another machine, or cut short for size, show them read-only.
 - **Ctrl/Cmd-click a file path in a terminal** (`src/app.ts:42`, `README.md#L5`)
   and it opens in the Files panel, at that line, highlighted. Images,
   archives, folders, missing and remote files go to Herdr's usual opener. It's
