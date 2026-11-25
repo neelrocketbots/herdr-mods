@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, statSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { projectDir, pickAgents, CHUNK, FILES, parseFiles, parseMeta, newState, feed, list, summary } from "../mods/agent-tasks/tasks.js";
+import { projectDir, pickAgents, CHUNK, FILES, HAS_TASKS, touches, parseFiles, parseMeta, newState, feed, list, summary } from "../mods/agent-tasks/tasks.js";
 
 const J = (o) => JSON.stringify(o);
 const create = (useId, input, side = false) => J({ type: "assistant", isSidechain: side, message: { content: [{ type: "tool_use", id: useId, name: "TaskCreate", input }] } });
@@ -134,4 +134,35 @@ test("parseMeta: description and finished, tolerant of junk", () => {
   assert.deepEqual(parseMeta('{"description":"Check logs","finished":true,"agentType":"x"}'), { label: "Check logs", finished: true });
   assert.deepEqual(parseMeta('{"agentType":"Explore"}'), { label: "Explore", finished: false });
   assert.deepEqual(parseMeta("nope"), { label: "subagent", finished: false });
+});
+
+test("touches: only changes to the shown sessions' files (or a whole-folder refresh) count", () => {
+  const dir = "/c/projects/-u-Dev", main = `${dir}/abc.jsonl`;
+  const targets = [main];
+  assert.equal(touches([`${dir}/other.jsonl`], targets, [dir]), false);       // another session in the same folder
+  assert.equal(touches([`${dir}/abcd.jsonl`], targets, [dir]), false);        // a prefix isn't a match
+  assert.equal(touches([main], targets, [dir]), true);
+  assert.equal(touches([`${dir}/abc/subagents/agent-1.jsonl`], targets, [dir]), true);
+  assert.equal(touches([dir], targets, [dir]), true);                          // root path: refresh everything
+  assert.equal(touches([], targets, [dir]), false);
+});
+
+test("FILES lists many subagents with one stat call", () => {
+  const dir = mkdtempSync(join(tmpdir(), "agent-tasks-"));
+  const main = join(dir, "s.jsonl");
+  writeFileSync(main, "x\n");
+  mkdirSync(join(dir, "s", "subagents"), { recursive: true });
+  for (let i = 0; i < 30; i++) writeFileSync(join(dir, "s", "subagents", `agent-${i}.jsonl`), "y\n");
+  const out = spawnSync("sh", ["-c", FILES, "sh", main], { encoding: "utf8" }).stdout;
+  assert.equal(parseFiles(out).length, 31);
+  assert.ok(!FILES.includes("for f in"), "one stat for all files, not one per file");
+});
+
+test("HAS_TASKS names only the files with task lines", () => {
+  const dir = mkdtempSync(join(tmpdir(), "agent tasks "));
+  const a = join(dir, "a.jsonl"), b = join(dir, "b.jsonl");
+  writeFileSync(a, create("t1", { subject: "A" }, true) + "\n");
+  writeFileSync(b, J({ type: "assistant", message: { content: [] } }) + "\n");
+  const out = spawnSync("sh", ["-c", HAS_TASKS, "sh", a, b], { encoding: "utf8" }).stdout;
+  assert.deepEqual(out.split("\n").filter(Boolean), [a]);
 });

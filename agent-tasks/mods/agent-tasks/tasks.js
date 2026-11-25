@@ -22,9 +22,23 @@ export const CHUNK = `[ "$(tail -c +$3 "$1" | head -c 1 | od -An -tx1 | tr -d ' 
 tail -c +$(($2 + 1)) "$1" | head -c $(($3 - $2)) | LC_ALL=C grep -E '${TASK_GREP}' | LC_ALL=C grep -v '"type":"api-request'`;
 
 // sh -c FILES sh <transcript>: "size mtime path" per line for the transcript
-// and each of its subagents' (<session>/subagents/agent-*.jsonl) that exist.
-// GNU stat (Linux) first, else BSD stat (macOS).
-export const FILES = `for f in "$1" "\${1%.jsonl}"/subagents/agent-*.jsonl; do [ -f "$f" ] || continue; stat -c '%s %Y %n' "$f" 2>/dev/null || stat -f '%z %m %N' "$f"; done; true`;
+// and each of its subagents' (<session>/subagents/agent-*.jsonl), with one
+// stat call (a session can have hundreds of subagents). GNU stat (Linux)
+// first, else BSD stat (macOS).
+export const FILES = `t=$1; set -- "\${t%.jsonl}"/subagents/agent-*.jsonl; [ -e "$1" ] || shift; set -- "$t" "$@"
+[ -e "$t" ] || exit 0
+stat -c '%s %Y %n' "$@" 2>/dev/null || stat -f '%z %m %N' "$@" 2>/dev/null; true`;
+
+// sh -c HAS_TASKS sh <files...>: the files that have task lines, one grep for
+// all (subagents rarely do; their files are then skipped unread).
+export const HAS_TASKS = `LC_ALL=C grep -l -E '${TASK_GREP}' "$@"; true`;
+
+// Whether a watch's changed paths concern the shown sessions: a transcript in
+// `targets`, a file under its <session>/ folder (subagents), or a watched
+// folder itself (the watch's "refresh everything").
+export function touches(paths, targets, dirs) {
+  return paths.some((p) => dirs.includes(p) || targets.some((t) => p === t || p.startsWith(`${t.slice(0, -".jsonl".length)}/`)));
+}
 
 // FILES' output: [{ size, mtime (ms), path }].
 export function parseFiles(text) {

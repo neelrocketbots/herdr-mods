@@ -24,7 +24,7 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { exec, hc, readTextFile, watchFolder, theme, run, props, checking, spaces, agents, window } from "herdr";
-import { CHUNK, CLAUDE_DIRS, FILES, parseFiles, parseMeta, projectDir, pickAgents, newState, feed, list, summary } from "./tasks.js";
+import { CHUNK, CLAUDE_DIRS, FILES, HAS_TASKS, touches, parseFiles, parseMeta, projectDir, pickAgents, newState, feed, list, summary } from "./tasks.js";
 
 const FALLBACK_MS = 30_000;           // check this often even without events
 const SETTLE_MS = 400;                // at most one read per this, however many writes
@@ -36,12 +36,15 @@ const SUBS_MAX = 4;                   // subagents shown, most recent first
 const LIST_MAX = 168;                 // px of rows before the list scrolls (~6)
 const COLLAPSED_KEY = "agent-tasks.collapsed";
 const LAST_KEY = "agent-tasks.last";  // { spaceId: { path, label } }
+const READS_MAX = 400;                // transcripts remembered before the oldest are dropped
 
 // Per transcript: bytes read so far, the replay state, when to retry after a
-// failure; per subagent meta file: its mtime and contents. Module scope, so
-// they survive this view being rebuilt.
+// failure; per subagent meta file: its mtime and contents; per terminal: the
+// pid of its Claude (asked of hc only when that pid's session file is gone).
+// Module scope, so they survive this view being rebuilt.
 const reads = new Map();
 const metas = new Map();
+const pids = new Map();
 
 const agoText = (ms) => { const m = Math.round((Date.now() - ms) / 60_000); return m < 60 ? `${Math.max(1, m)}m` : `${Math.round(m / 60)}h`; };
 const activeSpace = () => spaces().find((s) => s.active) ?? null;
@@ -68,7 +71,7 @@ export default class AgentTasks extends View {
   // the fallback timer; again. Started (and restarted after a mod reload)
   // from render.
   async run(cx) {
-    let dirs = [];
+    let dirs = [], targets = [];
     for (;;) {
       if (window()?.visible === false) { await cx.sleep(HIDDEN_MS); continue; }
       this.dirty = false;
@@ -76,7 +79,7 @@ export default class AgentTasks extends View {
       const watches = new Map(dirs.map((dir) => [dir, watchFolder(dir)]));
       try {
         const r = await this.load();
-        dirs = r.watch;
+        dirs = r.watch; targets = r.targets ?? [];
         for (const dir of dirs) if (!watches.has(dir)) watches.set(dir, watchFolder(dir));
         if (activeSpace()?.id !== r.spaceId) this.dirty = true; // switched meanwhile: read again
         else {
@@ -90,7 +93,14 @@ export default class AgentTasks extends View {
       } catch {} // keep the last list
       if (!this.dirty) {
         const woke = new Promise((resolve) => { this.wake = resolve; });
-        await Promise.race([woke, cx.sleep(FALLBACK_MS), ...[...watches.values()].map((w) => w.catch(() => never))]);
+        const timer = cx.sleep(FALLBACK_MS);
+        for (;;) {
+          const hit = await Promise.race([woke, timer,
+            ...[...watches].map(([dir, w]) => w.then((paths) => ({ dir, paths }), () => never))]);
+          if (!hit?.paths || touches(hit.paths, targets, dirs)) break;
+          // Another session's file in the same folder: keep waiting.
+          watches.set(hit.dir, watchFolder(hit.dir));
+        }
         this.wake = null;
       }
       for (const w of watches.values()) w.cancel();
@@ -115,22 +125,35 @@ export default class AgentTasks extends View {
       if (!lists) continue;
       const label = agent.title || session.name || "Claude Code";
       this.remember(space.id, { path: session.path, label });
-      return { spaceId: space.id, view: { label, endedAt: null, ...lists }, watch: [...watch] };
+      return { spaceId: space.id, view: { label, endedAt: null, ...lists }, watch: [...watch], targets: [...live] };
     }
     const last = this.last[space.id];
     const reason = claudes.length ? "no task list yet" : "no Claude here";
-    if (!last || live.has(last.path)) return { spaceId: space.id, view: null, watch: [...watch], reason };
+    if (!last || live.has(last.path)) return { spaceId: space.id, view: null, watch: [...watch], targets: [...live], reason };
     watch.add(folderOf(last.path));
     const lists = await this.lists(last.path, ENDED_MS);
-    return { spaceId: space.id, view: lists ? { label: last.label, endedAt: lists.mtime, ...lists } : null, watch: [...watch], reason };
+    return { spaceId: space.id, view: lists ? { label: last.label, endedAt: lists.mtime, ...lists } : null, watch: [...watch], targets: [...live, last.path], reason };
   }
 
   // The Claude session in terminal `address`: { path, name } or null.
   async session(address) {
+    const cached = pids.get(address);
+    if (cached != null) {
+      const s = await this.sessionOf(cached);
+      if (s) return s;
+      pids.delete(address); // that Claude ended: ask hc again
+    }
     const r = await hc(["get", address, "--json"]).catch(() => null);
     let pid = null;
     try { pid = JSON.parse(r?.stdout ?? "").foreground?.pid; } catch {}
     if (!Number.isInteger(pid)) return null;
+    const s = await this.sessionOf(pid);
+    if (s) pids.set(address, pid);
+    return s;
+  }
+
+  // <config>/sessions/<pid>.json, in whichever config folder has it.
+  async sessionOf(pid) {
     for (const dir of this.dirs) {
       const text = await readTextFile(`${dir}/sessions/${pid}.json`).catch(() => null);
       if (!text) continue;
@@ -152,8 +175,21 @@ export default class AgentTasks extends View {
     const mtime = Math.max(...files.map((f) => f.mtime));
     if (Date.now() - mtime > maxAgeMs) return null;
     const tasks = await this.read(main, false);
+    const others = files.filter((f) => f !== main);
+    // Subagent files with new bytes: one grep finds those with task lines;
+    // the rest are marked read without reading them.
+    const grown = others.filter((f) => f.size > (reads.get(f.path)?.offset ?? 0));
+    if (grown.length) {
+      const g = await exec("sh", ["-c", HAS_TASKS, "sh", ...grown.map((f) => f.path)], { timeout: 15_000 }).catch(() => null);
+      if (g) {
+        const has = new Set(g.stdout.split("\n").filter(Boolean));
+        for (const f of grown) if (!has.has(f.path) && !reads.get(f.path)?.state.tasks.size) {
+          reads.set(f.path, { offset: f.size, state: newState({ sidechain: true }), retryAt: 0 });
+        }
+      }
+    }
     const subs = [];
-    for (const f of files.filter((f) => f !== main).sort((a, b) => b.mtime - a.mtime)) {
+    for (const f of others.sort((a, b) => b.mtime - a.mtime)) {
       const subTasks = await this.read(f, true);
       if (!subTasks.length) continue;
       subs.push({ ...(await this.meta(f)), tasks: subTasks });
@@ -183,7 +219,11 @@ export default class AgentTasks extends View {
   // added since the last call. sidechain: a subagent's.
   async read({ path, size }, sidechain) {
     let r = reads.get(path);
-    if (!r || size < r.offset) { r = { offset: 0, state: newState({ sidechain }), retryAt: 0 }; reads.set(path, r); }
+    if (!r || size < r.offset) {
+      r = { offset: 0, state: newState({ sidechain }), retryAt: 0 };
+      reads.set(path, r);
+      if (reads.size > READS_MAX) for (const key of [...reads.keys()].slice(0, reads.size - READS_MAX)) reads.delete(key);
+    }
     if (size > r.offset && Date.now() >= r.retryAt) {
       try {
         const g = await exec("sh", ["-c", CHUNK, "sh", path, String(r.offset), String(size)], { timeout: 15_000 });
@@ -247,10 +287,10 @@ export default class AgentTasks extends View {
       .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(task.subject));
 
     const pct = s.total ? (100 * s.done) / s.total : 0;
-    const header = h_flex().id("at-toggle").px(8).pt(2).pb(4).gap(6).items_center().cursor_pointer().text_size(11).text_color(t.dim)
-      .hover((st) => st.text_color(t.foreground))
-      .tooltip(this.collapsed ? "Show the tasks" : "Just the count")
-      .on_click((_e, cx) => this.toggle(cx))
+    const header = h_flex().id("at-toggle").px(8).pt(2).pb(4).gap(6).items_center().text_size(11).text_color(t.dim)
+      .when(Boolean(v), (el) => el.cursor_pointer().hover((st) => st.text_color(t.foreground))
+        .tooltip(this.collapsed ? "Show the tasks" : "Just the count")
+        .on_click((_e, cx) => this.toggle(cx)))
       .child(div().flex_none().child("Tasks"))
       .child(div().flex_1().min_w(0).truncate().child(!v ? (this.reason ? `· ${this.reason}` : "") : faded ? `· ${v.label} · ended ${agoText(v.endedAt)} ago` : `· ${v.label}`))
       .when(s.total > 0, (el) => el

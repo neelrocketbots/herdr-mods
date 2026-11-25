@@ -39,7 +39,9 @@ Code session working in the shown space: done, now, next. Read-only, live.
   folders of the transcripts read (macOS watches recursively, so subagents'
   files count), a wake from `render` when the active space or its Claude
   agents change, or 30s. The watches start before the read, so a write during
-  it still wakes the loop. After each wake it waits 400ms (a throttle: at most
+  it still wakes the loop. A watch firing only for files that aren't the
+  shown sessions' (another session in the same project folder, like every
+  session started in `~/Dev`) is re-armed without a read (`touches`). After each wake it waits 400ms (a throttle: at most
   one read per 400ms however many writes). While `window()?.visible` is
   false it only checks every 2s whether the window is back. A result for a
   space that's no longer active is dropped and read again. It redraws only
@@ -51,16 +53,19 @@ Code session working in the shown space: done, now, next. Read-only, live.
   `seq` first. For each, `hc get <address> --json` gives `foreground.pid`,
   the Claude process; `<config>/sessions/<pid>.json` gives `sessionId` and
   `cwd`, trying each config folder (`~/.claude`, `~/.claude?*`, listed every
-  minute). The first with a task list wins, and is remembered for the space
-  in localStorage (`agent-tasks.last`: transcript path and label).
+  minute). The pid is remembered per terminal; `hc` is asked again only when
+  that pid's session file is gone. The first with a task list wins, and is
+  remembered for the space in localStorage (`agent-tasks.last`: transcript
+  path and label).
 - None: the remembered one, unless it's one of the live ones, if it (or a
   subagent's file) changed in the last 24h, checked before reading.
 - Transcript: `<config>/projects/<cwd, every non-alphanumeric char → "-">/<sessionId>.jsonl`;
   its subagents': `<sessionId>/subagents/agent-*.jsonl`, each with an
   `agent-*.meta.json` (`description`, `agentType`, `finished`). One `sh`
-  (`FILES`) prints size, mtime and path for all of them; subagent files are
-  replayed with `newState({ sidechain: true })` (their lines are all
-  `isSidechain`). Subagents with tasks, newest first, at most 4. Today's
+  (`FILES`) prints size, mtime and path for all of them with a single `stat`.
+  Subagent files with new bytes go through one `grep -l` (`HAS_TASKS`); those
+  without task lines are marked read unread. The rest are replayed with
+  `newState({ sidechain: true })` (their lines are all `isSidechain`). Subagents with tasks, newest first, at most 4. Today's
   Claude Code gives subagents no task tools.
 - Reading it (`CHUNK` in `tasks.js`): `stat -f "%z %m"`; when it grew, only
   bytes `[offset, size)` via `tail -c +N | head -c M`, then `LC_ALL=C grep -E`
@@ -71,7 +76,7 @@ Code session working in the shown space: done, now, next. Read-only, live.
   `LC_ALL=C` makes a 129MB file take ~1.5s instead of ~10s. A failed or
   timed-out read waits 30s before trying that file again. A file smaller than
   the offset starts over from 0. Offsets and replay state live in module
-  scope per transcript.
+  scope per transcript, the oldest dropped past 400.
 - Replay (`tasks.js`, pure, tested with `node --test`): an `assistant` line's
   `tool_use` `TaskCreate` waits for the `user` line's `tool_result` with the
   same `tool_use_id`, whose `toolUseResult.task.id` is the task id; its
