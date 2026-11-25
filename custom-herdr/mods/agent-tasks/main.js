@@ -19,8 +19,8 @@
 //
 // The layout block (props.block) starts at 0px; this sizes it to its content.
 // With nothing to show it keeps its header line ("Tasks · no task list yet").
-// The list's height animates, and it fades across a space switch. The header
-// folds it (remembered).
+// The list's height animates; skeleton rows show while a space is read. A
+// click on a task opens its details. The header folds it (remembered).
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { exec, hc, readTextFile, watchFolder, theme, run, props, checking, spaces, agents, window } from "herdr";
@@ -61,7 +61,8 @@ export default class AgentTasks extends View {
     this.spaceId = null;
     this.reason = "";       // why there's no list: shown in the header
     this.listH = 0;          // the list's height, animated toward its content's
-    this.fade = false;       // the list fades out while a new space is read
+    this.loading = true;     // nothing read yet for this space: skeleton rows
+    this.openKey = null;     // the task ("t:<id>") or subagent ("s:<label>") opened for details
     this.dirs = null; this.dirsAt = 0;
     try { this.collapsed = localStorage.getItem(COLLAPSED_KEY) === "1"; } catch { this.collapsed = false; }
     try { this.last = JSON.parse(localStorage.getItem(LAST_KEY) ?? "{}") ?? {}; } catch { this.last = {}; }
@@ -84,9 +85,9 @@ export default class AgentTasks extends View {
         if (activeSpace()?.id !== r.spaceId) this.dirty = true; // switched meanwhile: read again
         else {
           const sig = r.view ? JSON.stringify([r.view.label, r.view.endedAt && agoText(r.view.endedAt), r.view.tasks, r.view.subs]) : `none:${r.reason}`;
-          if (sig !== this.sig || this.fade) {
+          if (sig !== this.sig || this.loading) {
             this.sig = sig; this.view = r.view; this.reason = r.reason ?? "";
-            this.fade = false; // fade the new space's list in
+            this.loading = false; // the skeleton gives way to the list
             cx.notify();
           }
         }
@@ -258,7 +259,7 @@ export default class AgentTasks extends View {
       const sid = activeSpace()?.id ?? null;
       const key = `${sid}|${pickAgents(agents(), sid).map((a) => a.address).join(",")}`;
       if (key !== this.key) { this.key = key; this.dirty = true; this.wake?.(); }
-      if (sid !== this.spaceId) { if (this.spaceId !== null) this.fade = true; this.spaceId = sid; }
+      if (sid !== this.spaceId) { this.loading = true; this.openKey = null; this.spaceId = sid; }
     }
     const t = theme(), v = this.view;
     const root = v_flex().id("agent-tasks").w_full().bg(t.chrome).text_color(t.foreground);
@@ -266,7 +267,21 @@ export default class AgentTasks extends View {
     const working = t.working ?? t.ansi3;
     const mark = (child) => div().flex_none().size(13).mt(2).flex().items_center().justify_center().child(child);
     const ring = () => div().size(11).rounded_full().border_1().border_color(t.dim);
-    const tip = (task) => (task.description ? `${task.subject}\n\n${task.description}` : task.subject);
+    // Click a task (or a subagent) to open its details under it; click again
+    // to close. One open at a time.
+    const opener = (el, key) => el.cursor_pointer().hover((st) => st.bg(t.hover))
+      .on_click((_e, cx) => { this.openKey = this.openKey === key ? null : key; cx.notify(); });
+    const STATUS = { completed: "Done", in_progress: "In progress", pending: "Next" };
+    const details = (task) => v_flex().id(`at-d-${task.id}`).mx(8).mb(4).mt(1).px(10).py(8).gap(4).rounded(6)
+      .bg(t.background).border_1().border_color(t.border).text_size(11.5)
+      .child(h_flex().gap(6).items_center().text_size(11).text_color(t.dim)
+        .child(div().child(`#${task.id}`))
+        .child(div().child("·"))
+        .child(div().text_color(task.status === "completed" ? t.ansi2 : task.status === "in_progress" ? working : t.muted).child(STATUS[task.status] ?? task.status)))
+      .child(div().whitespace_normal().text_color(t.foreground).child(task.subject))
+      .when(task.status === "in_progress" && Boolean(task.activeForm), (el) => el.child(div().whitespace_normal().text_color(working).child(`${task.activeForm}…`)))
+      .child(div().whitespace_normal().text_color(task.description ? t.muted : t.dim).child(task.description || "No description."));
+    const withDetails = (row, task) => this.openKey === `t:${task.id}` ? [row, details(task)] : [row];
 
     const doneRow = h_flex().id("at-done").flex_none().px(8).py(3).gap(8).items_center().rounded(6).cursor_pointer()
       .text_size(12).text_color(t.dim).hover((st) => st.bg(t.hover))
@@ -274,38 +289,36 @@ export default class AgentTasks extends View {
       .child(mark(div().text_size(10).text_color(t.ansi2).child("✓")))
       .child(div().flex_1().child(`${s.done} done`))
       .child(div().flex_none().text_size(11).child(this.showDone ? "▾" : "▸"));
-    const doneTask = (task, i) => h_flex().id(`at-c-${i}`).flex_none().px(8).py(3).gap(8).items_start().text_size(12).tooltip(tip(task))
+    const doneTask = (task) => withDetails(opener(h_flex().id(`at-c-${task.id}`).flex_none().px(8).py(3).gap(8).items_start().rounded(6).text_size(12), `t:${task.id}`)
       .child(mark(div().text_size(10).text_color(t.ansi2).child("✓")))
-      .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(task.subject));
-    const nowTask = (task, i) => h_flex().id(`at-n-${i}`).flex_none().px(8).py(4).gap(8).items_start().rounded(6).bg(t.raised).text_size(12).tooltip(tip(task))
+      .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(task.subject)), task);
+    const nowTask = (task) => withDetails(opener(h_flex().id(`at-n-${task.id}`).flex_none().px(8).py(4).gap(8).items_start().rounded(6).bg(t.raised).text_size(12), `t:${task.id}`)
       .child(mark(svg("mods/agent-tasks/spinner.svg").size(11).text_color(working).when(!faded, (el) => el.spin(900))))
       .child(v_flex().flex_1().min_w(0).gap(1)
         .child(div().whitespace_normal().text_color(t.foreground).child(task.subject))
-        .when(Boolean(task.activeForm) && !faded, (el) => el.child(div().truncate().text_size(11).text_color(working).child(`${task.activeForm}…`))));
-    const nextTask = (task, i) => h_flex().id(`at-p-${i}`).flex_none().px(8).py(3).gap(8).items_start().text_size(12).tooltip(tip(task))
+        .when(Boolean(task.activeForm) && !faded, (el) => el.child(div().truncate().text_size(11).text_color(working).child(`${task.activeForm}…`)))), task);
+    const nextTask = (task) => withDetails(opener(h_flex().id(`at-p-${task.id}`).flex_none().px(8).py(3).gap(8).items_start().rounded(6).text_size(12), `t:${task.id}`)
       .child(mark(ring()))
-      .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(task.subject));
+      .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(task.subject)), task);
 
     const pct = s.total ? (100 * s.done) / s.total : 0;
     const header = h_flex().id("at-toggle").px(8).pt(2).pb(4).gap(6).items_center().text_size(11).text_color(t.dim)
       .when(Boolean(v), (el) => el.cursor_pointer().hover((st) => st.text_color(t.foreground))
-        .tooltip(this.collapsed ? "Show the tasks" : "Just the count")
         .on_click((_e, cx) => this.toggle(cx)))
       .child(div().flex_none().child("Tasks"))
-      .child(div().flex_1().min_w(0).truncate().child(!v ? (this.reason ? `· ${this.reason}` : "") : faded ? `· ${v.label} · ended ${agoText(v.endedAt)} ago` : `· ${v.label}`))
-      .when(s.total > 0, (el) => el
+      .child(div().flex_1().min_w(0).truncate().child(this.loading ? "" : !v ? (this.reason ? `· ${this.reason}` : "") : faded ? `· ${v.label} · ended ${agoText(v.endedAt)} ago` : `· ${v.label}`))
+      .when(s.total > 0 && !this.loading, (el) => el
         .child(div().flex_none().w(44).h(3).rounded(2).bg(t.input).overflow_hidden()
           .child(div().h_full().w(Math.round((44 * pct) / 100)).bg(t.ansi2)))
         .child(div().flex_none().child(`${s.done}/${s.total}`)))
-      .when(Boolean(v), (el) => el.child(div().flex_none().child(this.collapsed ? "▸" : "▾")));
+      .when(Boolean(v) && !this.loading, (el) => el.child(div().flex_none().child(this.collapsed ? "▸" : "▾")));
 
     // A subagent: one line, its description and count; while it works, its
-    // task in progress under it. Tooltip: its whole list.
+    // task in progress under it. Click: its whole list.
     const MARK = { completed: "✓", in_progress: "◐" };
     const subRow = (sub, i) => {
-      const ss = summary(sub.tasks), now = sub.finished || faded ? null : ss.current[0];
-      return h_flex().id(`at-s-${i}`).flex_none().px(8).py(3).gap(8).items_start().rounded(6).text_size(12)
-        .tooltip([sub.label, "", ...sub.tasks.map((x) => `${MARK[x.status] ?? "○"} ${x.subject}`)].join("\n"))
+      const ss = summary(sub.tasks), now = sub.finished || faded ? null : ss.current[0], key = `s:${sub.label}`;
+      const row = opener(h_flex().id(`at-s-${i}`).flex_none().px(8).py(3).gap(8).items_start().rounded(6).text_size(12), key)
         .child(mark(now ? svg("mods/agent-tasks/spinner.svg").size(11).text_color(working).spin(900)
           : ss.done === ss.total ? div().text_size(10).text_color(t.ansi2).child("✓") : ring()))
         .child(v_flex().flex_1().min_w(0).gap(1)
@@ -315,26 +328,40 @@ export default class AgentTasks extends View {
             .child(div().flex_none().text_size(11).text_color(t.dim).child(`${ss.done}/${ss.total}`)))
           .when(Boolean(now), (el) => el.child(div().truncate().text_size(11).text_color(working)
             .child(now.activeForm ? `${now.activeForm}…` : now.subject))));
+      if (this.openKey !== key) return [row];
+      return [row, v_flex().id(`at-sd-${i}`).mx(8).mb(4).mt(1).px(10).py(8).gap(3).rounded(6)
+        .bg(t.background).border_1().border_color(t.border).text_size(11.5)
+        .child(div().whitespace_normal().text_color(t.foreground).child(sub.label))
+        .child(div().text_size(11).text_color(t.dim).child(sub.finished ? "Subagent · finished" : "Subagent · running"))
+        .children(sub.tasks.map((x, j) => h_flex().id(`at-sdt-${i}-${j}`).gap(6).items_start()
+          .child(div().flex_none().w(12).text_color(x.status === "completed" ? t.ansi2 : x.status === "in_progress" ? working : t.dim).child(MARK[x.status] ?? "○"))
+          .child(div().flex_1().min_w(0).whitespace_normal().text_color(x.status === "completed" ? t.dim : t.muted).child(x.subject))))];
     };
 
-    const rows = [
+    // While a space is being read: placeholder rows, pulsing.
+    const skeleton = [70, 92, 56].map((w, i) => h_flex().id(`at-k-${i}`).flex_none().px(8).py(5).gap(8).items_center()
+      .child(div().flex_none().size(11).rounded_full().bg(t.input))
+      .child(div().h(8).w_full().max_w(w * 2).rounded(4).bg(t.input))
+      .loop("opacity", { from: 0.35, to: 0.9, period: 1100 }));
+
+    const rows = this.loading ? skeleton : [
       ...(s.done ? [doneRow] : []),
-      ...(this.showDone ? s.completed.map(doneTask) : []),
-      ...s.current.map(nowTask),
-      ...s.pending.map(nextTask),
-      ...(v?.subs ?? []).map(subRow),
+      ...(this.showDone ? s.completed.flatMap(doneTask) : []),
+      ...s.current.flatMap(nowTask),
+      ...s.pending.flatMap(nextTask),
+      ...(v?.subs ?? []).flatMap(subRow),
     ];
     // The list's box animates to its content's height (measured below) and
     // the block follows it (fit, on every size change), so rows slide in and
-    // out instead of jumping. On a space switch it fades out, and back in
-    // once the new space is read.
-    const open = !this.collapsed && rows.length > 0;
+    // out instead of jumping. On a space switch, skeleton rows until the new
+    // space is read.
+    const open = (this.loading || !this.collapsed) && rows.length > 0;
     return root.child(v_flex().id("at-content").w_full().px(10).pt(6).pb(6).gap(1).border_t(1).border_color(t.border)
       .on_size_change((size) => this.fit(size.height))
       .child(header)
       .child(div().id("at-clip").w_full().overflow_y_scroll()
         .h(open ? this.listH : 0).transition("height", { duration: 220, easing: "ease-out" })
-        .opacity(this.fade ? 0 : faded ? 0.6 : 1).transition("opacity", { duration: 160, easing: "ease-out" })
+        .opacity(faded && !this.loading ? 0.6 : 1).transition("opacity", { duration: 160, easing: "ease-out" })
         .child(v_flex().id("at-list").w_full().gap(1)
           .on_size_change((size, cx) => {
             const h = Math.min(LIST_MAX, Math.ceil(size.height));

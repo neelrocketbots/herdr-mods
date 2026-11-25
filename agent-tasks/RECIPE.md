@@ -20,12 +20,17 @@ Code session working in the shown space: done, now, next. Read-only, live.
     else `ansi3`) turning, the subject in `foreground` wrapping, then its
     `activeForm` + "…" in 11px `working`.
   - Pending: an 11px ring in `dim`, subject in `muted`, one line.
-  - Tooltip on every task: subject, a blank line, description.
+  - No tooltips. Clicking a task opens a details box under it (one at a
+    time; click again to close): `#id · Done/In progress/Next`, the subject,
+    the activeForm while in progress, and the description. On `background`
+    with a `border`, 6px corners.
+- While a space is read (start, switch): three pulsing placeholder rows
+  (`.loop("opacity")`) instead of the list; the header shows just "Tasks".
 - The rows scroll past 168px (about six).
 - Subagents, under the main list: a row each, the spinner while it has a task
   in progress (else ✓ when all done, or a ring), "↳ <description>" and
-  `done/total`, its activeForm under it while working; tooltip: its whole
-  list.
+  `done/total`, its activeForm under it while working; click: a box with its
+  description, running or finished, and its whole list.
 - With no tasks of its own (only subagents'), the header drops bar and count.
 - Ended session: label "· <its label> · ended 2h ago", rows at 0.6 opacity,
   no spinner turning, no activeForm.
@@ -92,9 +97,8 @@ Code session working in the shown space: done, now, next. Read-only, live.
 - Motion (native, no timers): the list sits in a box whose height
   `.transition("height", 220ms ease-out)`s to the list's measured height
   (capped at 168px, then it scrolls), so the block follows it smoothly;
-  `layout.resize` itself can't animate. On a space switch the box's opacity
-  goes to 0 (`.transition("opacity", 160ms)`) until the new space is read,
-  then back to 1 (0.6 for an ended session).
+  `layout.resize` itself can't animate. On a space switch the skeleton rows
+  stand in until the new space is read.
 
 ## Watch out
 

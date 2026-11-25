@@ -15,8 +15,7 @@ reads the list Claude Code already keeps, so there's nothing to set up.
   `~/.claude2` via `CLAUDE_CONFIG_DIR`) work too.
 - **The list**: done tasks fold into "✓ 3 done" (click to see them); the task
   in progress is highlighted with a spinner and what the agent says it's doing
-  ("Running the billing tests…"); next tasks one line each, the full text and
-  description in the tooltip. Long lists scroll after about six rows.
+  ("Running the billing tests…"); next tasks one line each. Long lists scroll after about six rows.
 - **Header**: "Tasks · <the agent's title>", a progress bar and `done/total`.
   Click it to fold the block to just that line (remembered).
 - **Ended**: the space's last session with a task list, once it's no longer
@@ -27,8 +26,10 @@ reads the list Claude Code already keeps, so there's nothing to set up.
   only once it does.
 - **Nothing to show**: the block keeps one line, "Tasks · no task list yet" (or
   "no Claude here"), so it doesn't pop in and out.
-- **Smooth**: the list's height animates as rows come and go, and it fades
-  out and back in when you switch space.
+- **Smooth**: the list's height animates as rows come and go, and placeholder
+  rows pulse while a space's list loads.
+- **Details**: click a task (or a subagent) to open a box under it with its
+  status, what it's doing, and its description; click again to close.
 - **Live, by events**: it watches the session's transcript folder, so a change
   shows as Claude writes it (at most about two reads a second), and it
   switches with the space at once. It also checks every 30 seconds, and does
